@@ -1194,25 +1194,48 @@ function updateStatusFile(text, type="default"){
 /* ============ FILE SYSTEM ============ */
 async function selectDirectory(){
   try{
-    if(!window.showDirectoryPicker) throw new Error("Navegador no soporta File System Access API");
-    state.dirHandle = await window.showDirectoryPicker({mode:"readwrite"});
-
-    // Guardar nombre en estado y localStorage para recordarlo siempre
-    state.config.lastDirName = state.dirHandle.name;
-    localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
-    
-    updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
-    logAction("Carpeta seleccionada", state.dirHandle.name);
-    
-    await loadConfig();
-    await scanCSVsForConfig();
-    refreshPropSelects();
-    toast("Carpeta seleccionada: " + state.dirHandle.name);
-  }catch(e){
-    // Si el usuario cancela el selector, no mostramos error (es comportamiento normal)
+    // Si soporta selector de carpetas (PC)
+    if(window.showDirectoryPicker){
+      state.dirHandle = await window.showDirectoryPicker({mode:"readwrite"});
+      state.config.lastDirName = state.dirHandle.name;
+      localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
+      updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
+      logAction("Carpeta seleccionada", state.dirHandle.name);
+      await loadConfig();
+      await scanCSVsForConfig();
+      refreshPropSelects();
+      toast("Carpeta seleccionada: " + state.dirHandle.name);
+    } else {
+      // Fallback para Android / APK / Navegadores móviles
+      const input = document.createElement("input");
+      input.type = "file";
+      input.webkitdirectory = true; // Permite seleccionar carpetas en navegadores compatibles
+      input.multiple = true;
+      
+      input.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        if(files.length > 0){
+          // Usamos el nombre del directorio padre del primer archivo
+          const folderName = files[0].webkitRelativePath.split('/')[0] || "Carpeta Android";
+          state.lastDirName = folderName;
+          updateStatusDir(`📁 ${folderName}`, "ok");
+          toast("Archivos cargados desde: " + folderName);
+          
+          // Procesar config.json si existe en la selección
+          const configFile = files.find(f => f.name === "config.json");
+          if(configFile){
+            const txt = await configFile.text();
+            state.config = {...state.config, ...JSON.parse(txt)};
+          }
+          refreshPropSelects();
+        }
+      };
+      input.click();
+    }
+  } catch(e){
     if(e.name !== 'AbortError') {
-        console.error(e);
-        toast("No se pudo seleccionar la carpeta", "err");
+      console.error(e);
+      toast("No se pudo seleccionar la carpeta o archivos", "err");
     }
   }
 }
