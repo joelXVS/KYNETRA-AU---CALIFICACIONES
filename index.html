@@ -1,0 +1,2786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kynetra AU - Calificaciones CSV</title>
+<link rel="icon" type="image/png" href="logo.png">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#334155;
+    --text:#f1f5f9; --muted:#94a3b8; --accent:#3b82f6;
+    --ok:#22c55e; --bad:#ef4444; --warn:#eab308; --info:#145ccf;
+    --border:#475569;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg); color:var(--text); zoom:1; min-height:100vh; display:flex; flex-direction:column;
+  }
+  
+  /* HEADER */
+  header {
+    background:var(--panel); padding:10px 12px;
+    border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10;
+  }
+  header h1{margin:10px auto; font-size:1rem; flex:1; font-size:40px;}
+  button, select, input{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:7px 10px; border-radius:6px; font-size:13px; cursor:pointer;
+    transition:all .2s;
+  }
+  button:hover:not(:disabled){background:#475569; transform:translateY(-1px)}
+  button:active:not(:disabled){transform:translateY(0)}
+  button:disabled{opacity:.5; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent)}
+  button.primary:hover:not(:disabled){background:#2563eb}
+  button.danger{background:var(--bad); border-color:var(--bad)}
+  button.danger:hover:not(:disabled){background:#cf1111; transform:translateY(-1px)}
+  button.success{background:var(--ok); border-color:var(--ok)}
+  button.success:hover:not(:disabled){background:#3ceb25; transform:translateY(-1px)}
+  button.icon-btn{padding:6px 8px; font-size:14px}
+  
+  /* MAIN TABS */
+  .main-tabs{margin:10px 0 auto; display:flex; justify-content:center}
+  .main-tab{
+    padding:10px 20px; background:transparent; border:none; color:var(--muted);
+    cursor:pointer; border-bottom:2px solid transparent; font-size:14px; margin: 0 4px;
+  }
+  .main-tab.active{color:var(--accent)}
+  .main-tab:hover{background:var(--panel2)}
+  
+  main{padding:12px; flex:1}
+  .tab-content{display:none}
+  .tab-content.active{display:block}
+  
+  /* PROPIEDADES EN COLUMNA */
+  .props-card{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:14px; margin-bottom:12px;
+  }
+  .props-card h2{margin:0 0 10px; font-size:.95rem; color:var(--muted)}
+  .props-list{display:grid; grid-template-columns: repeat(2, 1fr); gap:12px}
+  .prop-row{
+    display:grid; grid-template-rows: repeat(2, 1fr); align-items:center; margin: 0 auto;
+  }
+  .prop-row label{
+    min-width:100px; font-size:13px; color:var(--muted); font-weight:500;
+  }
+  .prop-row select, .prop-row input{
+    flex:1; width:225px; padding:4px 10px;
+  }
+  .file-preview{
+    font-size:12px; color:var(--muted); margin-top:32px;
+    padding:6px 10px; background:var(--panel2); border-radius:4px;
+  }
+  
+  /* TABLA */
+  .table-wrap{
+    overflow-x:auto; border:1px solid var(--border); border-radius:8px;
+    background:var(--panel);
+  }
+  table{
+    border-collapse:separate; border-spacing:0; width:max-content; min-width:100%;
+    font-size:13px;
+  }
+  th, td{
+    border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+    padding:6px 4px; vertical-align:middle; background:var(--panel);
+    text-align:center;
+  }
+  th{
+    background:var(--panel2); font-weight:600; position:sticky; top:0;
+    text-align:center;
+  }
+  td input{
+    background:transparent; border:none; color:var(--text); width:100%;
+    padding:4px; font-size:13px; text-align:center;
+  }
+  #name-col {width: 310px;}
+  #name-input {width: 310px;}
+  td input:focus{outline:2px solid var(--accent); background:var(--panel2)}
+  td input.invalid{
+    background:rgba(239,68,68,.2) !important;
+    border:1px solid var(--bad);
+    color:var(--bad);
+  }
+  td input.warning{
+    background:rgba(234,179,8,.2) !important;
+    border:1px solid var(--warn);
+  }
+  td input.valid{
+    border:1px solid var(--ok);
+  }
+  
+  /* CODIGO DE EVALUACION */
+  .eval-code{
+    display:inline-block; padding:4px 8px; background:var(--accent);
+    color:white; border-radius:4px; font-size:11px; font-weight:600;
+    cursor:pointer; margin-bottom:2px;
+  }
+  .eval-code:hover{background:#2563eb}
+  .eval-info{font-size:9px; color:var(--muted); margin-top:2px}
+  
+  /* BOTONES DE ACCION MEJORADOS */
+  .row-actions{display:flex; gap:4px; justify-content:center}
+  .row-actions button{
+    padding:5px 10px; font-size:12px; border-radius:4px;
+    display:flex; align-items:center; gap:3px;
+  }
+  .row-actions .btn-add{background:var(--ok); border-color:var(--ok); color:white}
+  .row-actions .btn-add:hover{background:#16a34a}
+  .row-actions .btn-del{background:var(--bad); border-color:var(--bad); color:white}
+  .row-actions .btn-del:hover{background:#dc2626}
+  
+  .slot-controls{
+    display:flex; gap:3px; justify-content:center; margin-top:4px;
+  }
+  .slot-controls button{
+    padding:3px 8px; font-size:11px; min-width:24px;
+    background:var(--accent); border-color:var(--accent); color:white;
+  }
+  .slot-controls button:hover{background:#2563eb}
+  
+  .def-cell{
+    font-weight:600; text-align:center; min-width:55px;
+    background:var(--panel2) !important;
+  }
+  .estado-aprobado{background:rgba(34,197,94,.2) !important; color:var(--ok); font-weight:700}
+  .estado-reprobado{background:rgba(239,68,68,.2) !important; color:var(--bad); font-weight:700}
+  
+  /* ESTADISTICAS */
+  .stats-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(400px,1fr));
+    gap:12px;
+  }
+  .stat-card{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:8px; padding:14px;
+  }
+  .stat-card h3{margin:0 0 10px; font-size:.95rem; color:var(--accent)}
+  .stat-row{
+    display:flex; justify-content:space-between; padding:5px 0;
+    font-size:13px; border-bottom:1px solid var(--border);
+  }
+  .stat-row:last-child{border:none}
+  .stat-row .label{color:var(--muted)}
+  .stat-row .value{font-weight:600}
+  .stat-row .value.ok{color:var(--ok)}
+  .stat-row .value.bad{color:var(--bad)}
+  .stat-row .value.warn{color:var(--warn)}
+  .top-list{max-height:250px; overflow-y:auto}
+  .top-item{
+    display:flex; justify-content:space-between; padding:5px 0;
+    border-bottom:1px solid var(--border); font-size:12px;
+  }
+  .top-item:last-child{border:none}
+  .top-item .rank{color:var(--accent); font-weight:600; min-width:25px}
+  .top-item .name{flex:1; margin:0 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .top-item .score{font-weight:600}
+  
+  /* MODALES */
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(0,0,0,.7);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:12px;
+  }
+  .modal-bg.active{display:flex}
+  .modal{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:18px; max-width:500px; width:100%; max-height:90vh; overflow-y:auto;
+  }
+  .modal.large{max-width:800px}
+  .modal h3{margin:0 0 14px}
+  .modal label{display:block; margin:10px 0 4px; font-size:13px; color:var(--muted)}
+  .modal input, .modal select, .modal textarea{width:100%}
+  .modal textarea{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:8px; font-family:monospace;
+  }
+  .modal-actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap}
+  
+  /* CONFIG INTUITIVO */
+  .config-tabs{border-bottom:1px solid var(--border); margin:0 auto}
+  .config-tab{
+    padding:10px 20px; background:transparent; border:none; color:var(--muted);
+    cursor:pointer; border-bottom:2px solid transparent; font-size:14px;
+  }
+  .config-tab.active{color:var(--accent)}
+  .config-tab:hover{background:var(--panel2)}
+
+  .config-section{display:none}
+  .config-section.active{display:block}
+  .checkbox-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr));
+    gap:6px; margin:8px 0;
+  }
+  .checkbox-item{
+    display:flex; align-items:center; gap:6px; padding:6px;
+    background:var(--panel2); border-radius:4px; cursor:pointer;
+  }
+  .checkbox-item input[type="checkbox"]{width:auto; margin:0; cursor:pointer}
+  .checkbox-item label{cursor:pointer; font-size:13px; margin:0}
+  .grupo-editor, .asignatura-editor{
+    background:var(--panel2); border-radius:6px; padding:12px; margin:8px 0;
+  }
+  .grupo-editor h4, .asignatura-editor h4{margin:0 0 8px; font-size:14px; color:var(--accent)}
+  .grupo-list, .asignatura-list{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0}
+  .grupo-tag{
+    background:var(--accent); color:white; padding:4px 8px; border-radius:4px;
+    font-size:12px; display:flex; align-items:center; gap:4px;
+  }
+  .grupo-tag button{background:transparent; border:none; color:white; cursor:pointer; padding:0; font-size:14px}
+  .asignatura-tag{
+    background:var(--ok); color:white; padding:4px 8px; border-radius:4px;
+    font-size:12px; display:flex; align-items:center; gap:4px;
+  }
+  .asignatura-tag button{background:transparent; border:none; color:white; cursor:pointer; padding:0; font-size:14px}
+  
+  /* BACKUPS */
+  .backups-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+    gap:10px; margin:14px 0;
+  }
+  .backup-card{
+    background:var(--panel2); border:1px solid var(--border); border-radius:8px;
+    padding:12px; cursor:pointer; transition:.2s;
+  }
+  .backup-card:hover{border-color:var(--accent); transform:translateY(-2px)}
+  .backup-card h4{margin:0 0 6px; font-size:13px; color:var(--accent)}
+  .backup-card .meta{font-size:11px; color:var(--muted); margin-bottom:6px}
+  .backup-card .summary{font-size:11px; line-height:1.5}
+  .backup-card .summary div{display:flex; justify-content:space-between}
+  
+  /* AUDITORIA */
+  .audit-log{max-height:400px; overflow-y:auto; font-family:monospace; font-size:12px}
+  .audit-entry{padding:8px; border-bottom:1px solid var(--border)}
+  .audit-entry:last-child{border:none}
+  .audit-time{color:var(--muted); font-size:11px}
+  .audit-action{color:var(--accent); font-weight:600}
+  .audit-details{color:var(--text); margin-top:4px}
+
+  .toast{
+    position:fixed; top:70px; right:12px; background:var(--panel2);
+    border:1px solid var(--border); padding:10px 14px; border-radius:6px;
+    z-index:200; opacity:0; transform:translateX(100%); transition:.3s;
+  }
+  .toast.show{opacity:1; transform:translateX(0)}
+  .toast.ok{border-color:var(--ok)}
+  .toast.err{border-color:var(--bad)}
+  .toast.info{border-color:var(--info)}
+
+  .print-header{
+    display:none;
+    text-align:center;
+    margin-bottom:10px;
+    border-bottom:2px solid #333;
+    padding-bottom:8px;
+  }
+
+  .app-footer {
+    background:linear-gradient(180deg, var(--panel) 0%, #0a0f1c 100%);
+    border-top:1px solid var(--border);
+    padding:16px 20px 16px; 
+    font-size:13px; 
+    color:var(--muted);
+  }
+  
+  /* RESPONSIVE */
+  @media (min-width: 769px){
+    .app-footer{
+      display: block;
+    }
+
+    .app-footer-mobile{
+      display: none;
+    }
+  }
+
+  @media (max-width:768px){
+    header h1{font-size:.9rem; min-width:450px; margin:12px 0; text-align:center}
+    button, select, input{padding:6px 8px; font-size:12px}
+    main{padding:8px}
+    .props-card{padding:10px}
+    .props-list{grid-template-columns:1fr; gap:8px}
+    .prop-row{flex-direction:column; align-items:flex-start; gap:4px}
+    .prop-row label{min-width:auto}
+    .prop-row select, .prop-row input{max-width:100%}
+    .main-tab{padding:8px 12px; font-size:13px}
+    .stats-grid{grid-template-columns:1fr}
+
+    .app-footer{display: none}
+
+    .app-footer-mobile{
+      display: block;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      padding: 12px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+  }
+
+  .sticky-status-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--panel2);
+    border-top: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.3);
+  }
+  @media (max-width: 768px) {
+    .sticky-status-bar { padding: 8px 12px; font-size: 11px; }
+  }
+  
+  @media print{
+    @page{size:landscape; margin:1cm}
+    @page stats-page{size: landscape; margin: 1cm}
+
+    :root{--text:black; --muted:#000000; --border:#333}
+    body{background:transparent !important; color:black !important; zoom:80%; position: relative;}
+    
+    .print-watermark {
+      display: block !important;
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      width: 500px !important;
+      height: auto !important;
+      opacity: 0.2 !important;
+      z-index: -1 !important;
+      pointer-events: none !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .print-header {
+      display: block !important;
+      position: relative;
+      z-index: 1 !important;
+      text-align: center;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #333;
+      padding-bottom: 8px;
+    }
+
+    header, .status-bar, .toast, .modal-bg, .main-tabs, .props-card, .row-actions, .slot-controls, #actions-col, footer, #h1Header, .sticky-status-bar {
+      display:none !important;
+    }
+    
+    main{padding:0; grid-template-columns:1fr}
+    .tab-content{display:block !important}
+    
+    #tabPlanilla {
+      break-after: page; 
+    }
+    
+    #tabStats {
+      page: stats-page; 
+      break-before: page; 
+      display: block !important;
+      zoom: 100% !important; 
+      padding: 10px !important;
+    }
+
+    .table-wrap{border:none; overflow:visible; background:transparent}
+    table{font-size:10px; width:100%; min-width:0; page-break-inside:auto;}
+    tr{page-break-inside:avoid; page-break-after:auto}
+    thead{display:table-header-group}
+    th, td{
+      background:transparent !important; color:black !important;
+      border:1.5px solid #333 !important; padding:4px; text-align:center;
+    }
+    th {
+      background: rgba(240, 240, 240, 0.4) !important; 
+      font-weight: bold;
+    }
+
+    td input { 
+      background: transparent !important; 
+      border: none; 
+      color: black; 
+      padding: 2px;
+      font-size: 10px; 
+      text-align: center;
+    }
+    
+    #name-col, #name-input {width:240px !important}
+    
+    .def-cell { 
+      background: rgba(249, 249, 249, 0.4) !important; 
+      font-weight: bold; 
+    }
+    .estado-aprobado { 
+      background: rgba(212, 237, 218, 0.5) !important; 
+      color: #155724 !important; 
+    }
+    .estado-reprobado { 
+      background: rgba(248, 215, 218, 0.5) !important; 
+      color: #721c24 !important; 
+    }
+
+    #actions-td{display:none !important}
+
+    .stats-grid {
+      grid-template-columns: 1fr !important; 
+      gap: 15px !important;
+    }
+    .stat-card {
+      width: auto !important;
+      break-inside: avoid !important; 
+      border: 1px solid #333 !important;
+      background: rgba(255, 255, 255, 0.7) !important; 
+      padding: 15px !important;
+      border-radius: 8px !important;
+    }
+    .stat-card h3 {
+      color: #145ccf !important;
+      border-bottom: 1px solid #ccc !important;
+      padding-bottom: 5px !important;
+      margin-bottom: 10px !important;
+    }
+    .stat-row {
+      border-bottom: 1px solid #ddd !important;
+      padding: 6px 0 !important;
+    }
+    .stat-row:last-child { border-bottom: none !important; }
+    
+    .top-list {
+      max-height: none !important; 
+      overflow: visible !important;
+    }
+    .top-item {
+      border-bottom: 1px solid #ddd !important;
+      padding: 6px 0 !important;
+    }
+    .top-item:last-child { border-bottom: none !important; }
+  }
+
+  /* SCROLLBAR BONITO */
+  *::-webkit-scrollbar{width:10px; height:10px}
+  *::-webkit-scrollbar-track{background:var(--panel); border-radius:6px}
+  *::-webkit-scrollbar-thumb{
+    background:var(--border); border-radius:6px; border:2px solid var(--panel);
+  }
+  *::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+  *::-webkit-scrollbar-corner{background:var(--panel)}
+  *{scrollbar-width:thin; scrollbar-color:var(--border) var(--panel)}
+  
+  /* EVAL CONTEXT */
+  .eval-context-menu {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    z-index: 10001;
+    padding: 4px 0;
+    font-size: 13px;
+    min-width: 200px;
+  }
+  .eval-context-menu .menu-title {
+    padding: 6px 12px; color: var(--muted); font-size: 11px;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+  .eval-context-menu .menu-group { padding: 4px 0; border-bottom: 1px solid var(--border) }
+  .eval-context-menu .menu-group:last-child { border-bottom: none }
+  .eval-context-menu .menu-group-title {
+    padding: 2px 12px; color: var(--accent); font-size: 10px;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .eval-context-menu .menu-item {
+    padding: 6px 12px; cursor: pointer; color: var(--text);
+  }
+  .eval-context-menu .menu-item:hover {
+    background: var(--accent); color: white;
+  }
+  .eval-context-menu .menu-item.disabled {
+    opacity: .4; cursor: not-allowed; pointer-events: none;
+  }
+
+  /* INPUT CONTEXT */
+  .input-context-menu {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    z-index: 10001;
+    padding: 4px 0;
+    font-size: 13px;
+    min-width: 220px;
+  }
+  .input-context-menu .menu-title {
+    padding: 6px 12px; color: var(--muted); font-size: 11px;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+  .input-context-menu .menu-item {
+    padding: 8px 12px; cursor: pointer; color: var(--text);
+  }
+  .input-context-menu .menu-item:hover {
+    background: var(--accent); color: white;
+  }
+
+  /* INPUT NUMÉRICO */
+  td input[type="text"][inputmode="decimal"]{
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+  }
+  td input[type="text"][inputmode="decimal"]:focus{
+    background: var(--panel2);
+    outline: 2px solid var(--accent);
+  }
+</style>
+</head>
+<body>
+  <h1 id="h1Header" style="text-align:center">📊 Kynetra AU - Calificaciones</h1>
+  <img src="logo.png" class="print-watermark" alt="Marca de agua" style="display: none;">
+<header>
+  <div style="display:flex; flex-direction:column; gap:6px; flex:1">
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px">
+      <button id="btnDir" class="icon-btn">📁 Directorio</button>
+      <button id="btnConfig" class="icon-btn">⚙️ Ajustes</button>
+      <button id="btnBackups" class="icon-btn">💾 Backups</button>
+      <button id="btnAudit" class="icon-btn">📋 Auditoría</button>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:6px">
+      <button id="btnNew" class="primary">➕ Nueva planilla</button>
+      <button id="btnLoad">📂 Cargar planilla</button>
+      <button id="btnUploadStudents" class="success">👥 Subir estudiantes</button>
+      <button id="btnSave">💾 Guardar</button>
+      <button id="btnPrint">🖨️ Imprimir</button>
+      <button onclick="window.location.href='https://kynetra-studios.github.io/main/'">👑 Ir a Kynetra Studios</button>
+    </div>
+  </div>  
+
+  <div class="main-tabs">
+    <button class="main-tab active" data-tab="planilla">📝 Planilla</button>
+    <button class="main-tab" data-tab="stats">📊 Estadísticas</button>
+  </div>
+</header>
+
+<div class="print-header">
+  <h1>Kynetra AU - Calificaciones</h1>
+  <p id="printInfo"></p>
+</div>
+
+<main>
+  <!-- TAB PLANILLA -->
+  <div class="tab-content active" id="tabPlanilla">
+    <div class="props-card">
+      <h2>Seleccionar Propiedades de Planilla</h2>
+      <div class="props-list">
+        <div class="prop-row">
+          <label>Jornada:</label>
+          <select id="propJornada"></select>
+        </div>
+        <div class="prop-row">
+          <label>Grado:</label>
+          <select id="propGrado"></select>
+        </div>
+        <div class="prop-row">
+          <label>Grupo:</label>
+          <select id="propGrupo"></select>
+        </div>
+        <div class="prop-row">
+          <label>Periodo:</label>
+          <select id="propPeriodo">
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+          </select>
+        </div>
+        <div class="prop-row">
+          <label>Asignatura:</label>
+          <select id="propAsignatura"></select>
+        </div>
+      </div>
+      <div class="file-preview" id="fileNamePreview">Completa todas las propiedades</div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="gradesTable"></table>
+    </div>
+  </div>
+
+  <!-- TAB ESTADISTICAS -->
+  <div class="tab-content" id="tabStats">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>📊 Resumen General</h3>
+        <div class="stat-row"><span class="label">Total estudiantes:</span><span class="value" id="statTotal">0</span></div>
+        <div class="stat-row"><span class="label">Aprobados:</span><span class="value ok" id="statAprob">0 (0%)</span></div>
+        <div class="stat-row"><span class="label">Reprobados:</span><span class="value bad" id="statReprob">0 (0%)</span></div>
+        <div class="stat-row"><span class="label">Promedio general:</span><span class="value" id="statProm">0.00</span></div>
+        <div class="stat-row"><span class="label">Nota más alta:</span><span class="value ok" id="statMax">-</span></div>
+        <div class="stat-row"><span class="label">Nota más baja:</span><span class="value bad" id="statMin">-</span></div>
+      </div>
+
+      <div class="stat-card">
+        <h3>⚠️ Alertas</h3>
+        <div class="stat-row"><span class="label">Sin notas:</span><span class="value warn" id="statSinNotas">0</span></div>
+        <div class="stat-row"><span class="label">Celdas vacías (cog):</span><span class="value warn" id="statCeldasVac">0</span></div>
+        <div class="stat-row"><span class="label">Notas fuera de rango:</span><span class="value bad" id="statFueraRango">0</span></div>
+      </div>
+
+      <div class="stat-card">
+        <h3>📈 Distribución</h3>
+        <div class="stat-row"><span class="label">1.0 - 2.0:</span><span class="value bad" id="dist1">0</span></div>
+        <div class="stat-row"><span class="label">2.1 - 3.0:</span><span class="value warn" id="dist2">0</span></div>
+        <div class="stat-row"><span class="label">3.1 - 4.0:</span><span class="value" id="dist3">0</span></div>
+        <div class="stat-row"><span class="label">4.1 - 5.0:</span><span class="value ok" id="dist4">0</span></div>
+      </div>
+
+      <div class="stat-card">
+        <h3>🏆 Top 10 - Mejor Rendimiento</h3>
+        <div class="top-list" id="top10Best"></div>
+      </div>
+
+      <div class="stat-card">
+        <h3>📉 Top 10 - Bajo Rendimiento</h3>
+        <div class="top-list" id="top10Worst"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal Ajustes -->
+<div class="modal-bg" id="modalConfig">
+  <div class="modal large">
+    <h3>⚙️ Ajustes Generales</h3>
+    <div class="config-tabs">
+      <button class="config-tab active" data-tab="general">General</button>
+      <button class="config-tab" data-tab="grados">Grados y Grupos</button>
+      <button class="config-tab" data-tab="asignaturas">Asignaturas</button>
+    </div>
+
+    <div class="config-section active" data-section="general">
+      <label>Jornadas disponibles (separadas por coma)</label>
+      <input id="cfgJornadas" placeholder="Mañana, Tarde">
+      <label>Ponderación Cognitivo (%)</label>
+      <input type="number" id="cfgPondCog" min="0" max="100">
+      <label>Ponderación Social (%)</label>
+      <input type="number" id="cfgPondSoc" min="0" max="100">
+      <label>Ponderación Personal (%)</label>
+      <input type="number" id="cfgPondPer" min="0" max="100">
+      <label>Nota mínima de aprobación</label>
+      <input type="number" id="cfgMinNota" step="0.1" min="0" max="5">
+      <label>Rango mínimo</label>
+      <input type="number" id="cfgRangoMin" step="0.1">
+      <label>Rango máximo</label>
+      <input type="number" id="cfgRangoMax" step="0.1">
+    </div>
+
+    <div class="config-section" data-section="grados">
+      <label>Selecciona los grados disponibles:</label>
+      <div class="checkbox-grid" id="gradosCheckboxes"></div>
+      <div id="gruposContainer"></div>
+    </div>
+
+    <div class="config-section" data-section="asignaturas">
+      <label>Selecciona un grado-grupo para gestionar sus asignaturas:</label>
+      <select id="asigSelector"></select>
+      <div id="asignaturasContainer"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button onclick="closeModal('modalConfig')">Cancelar</button>
+      <button class="primary" onclick="saveConfig()">Guardar Ajustes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Backups -->
+<div class="modal-bg" id="modalBackups">
+  <div class="modal large">
+    <h3>💾 Gestión de Configuraciones</h3>
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap">
+      <button class="success" onclick="exportConfig()">📤 Exportar</button>
+      <button onclick="importConfig()">📥 Importar</button>
+    </div>
+    <h4 style="margin:14px 0 8px; color:var(--muted)">Backups disponibles:</h4>
+    <div id="backupsList" class="backups-grid"></div>
+    <div class="modal-actions">
+      <button onclick="closeModal('modalBackups')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Auditoría -->
+<div class="modal-bg" id="modalAudit">
+  <div class="modal large">
+    <h3>📋 Registro de Auditoría</h3>
+    <div class="audit-log" id="auditLog"></div>
+    <div class="modal-actions">
+      <button onclick="clearAuditLog()">Limpiar</button>
+      <button onclick="closeModal('modalAudit')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Nuevo CSV -->
+<div class="modal-bg" id="modalNew">
+  <div class="modal">
+    <h3>➕ Nuevo CSV</h3>
+    <p style="color:var(--muted); font-size:13px">Define el número de casillas por desempeño.</p>
+    <label>Casillas de notas en Desempeño Cognitivo (máx 8)</label>
+    <input type="number" id="newCogSlots" value="4" min="1" max="8">
+    <label>Casillas de notas en Desempeño Social (1-3)</label>
+    <input type="number" id="newSocSlots" value="3" min="1" max="3">
+    <label>Casillas de notas en Desempeño Personal (1-3)</label>
+    <input type="number" id="newPerSlots" value="3" min="1" max="3">
+    <div class="modal-actions">
+      <button onclick="closeModal('modalNew')">Cancelar</button>
+      <button class="primary" onclick="createNewCSV()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Evaluación -->
+<div class="modal-bg" id="modalEval">
+  <div class="modal">
+    <h3>📝 Detalles de Evaluación</h3>
+    <label>Código</label>
+    <input id="evalCode" readonly style="background:var(--panel2)">
+    <label>Nombre de la evaluación</label>
+    <input id="evalName" placeholder="Ej: Taller 1">
+    <label>Fecha</label>
+    <input type="date" id="evalDate">
+    <div class="modal-actions">
+      <button onclick="closeModal('modalEval')">Cancelar</button>
+      <button class="primary" onclick="saveEval()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmación -->
+<div class="modal-bg" id="modalConfirm">
+  <div class="modal">
+    <h3 id="confirmTitle">Confirmar</h3>
+    <p id="confirmMessage" style="color:var(--text); margin:16px 0"></p>
+    <div class="modal-actions">
+      <button id="confirmCancel">Cancelar</button>
+      <button id="confirmOk" class="primary">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Alerta -->
+<div class="modal-bg" id="modalAlert">
+  <div class="modal">
+    <h3 id="alertTitle">Aviso</h3>
+    <p id="alertMessage" style="color:var(--text); margin:16px 0"></p>
+    <div class="modal-actions">
+      <button id="alertOk" class="primary">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Subir Estudiantes -->
+<div class="modal-bg" id="modalUploadStudents">
+  <div class="modal large">
+    <h3>👥 Subir Estudiantes Masivamente</h3>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:12px">
+      Pega la lista de estudiantes, uno por línea. El sistema detectará automáticamente si están en formato "Nombres Apellidos" o "Apellidos Nombres" y los ordenará alfabéticamente.
+    </p>
+    
+    <label>Lista de estudiantes (uno por línea):</label>
+    <textarea id="studentsList" rows="12" placeholder="Ejemplo:
+Juan Carlos Moreno Potes
+María López García
+Pedro Martínez Rodríguez
+..."></textarea>
+    
+    <div style="display:flex; gap:12px; margin-top:12px; flex-wrap:wrap">
+      <label style="display:flex; align-items:center; gap:6px; margin:0">
+        <input type="checkbox" id="autoSort" checked style="width:auto">
+        <span style="font-size:13px">Ordenar alfabéticamente</span>
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; margin:0">
+        <input type="checkbox" id="detectFormat" checked style="width:auto">
+        <span style="font-size:13px">Detectar formato automáticamente</span>
+      </label>
+    </div>
+    
+    <div id="uploadPreview" style="margin-top:12px; padding:10px; background:var(--panel2); border-radius:6px; display:none">
+      <h4 style="margin:0 0 8px; font-size:13px; color:var(--accent)">Vista previa (<span id="previewCount">0</span> estudiantes):</h4>
+      <div id="previewList" style="max-height:150px; overflow-y:auto; font-size:12px"></div>
+    </div>
+    
+    <div class="modal-actions">
+      <button onclick="previewStudents()">👁️ Vista previa</button>
+      <button onclick="closeModal('modalUploadStudents')">Cancelar</button>
+      <button class="primary" onclick="processStudentsUpload()">✅ Subir estudiantes</button>
+    </div>
+  </div>
+</div>
+
+<div id="evalContextMenu" class="eval-context-menu" style="display:none;"></div>
+
+<div id="inputContextMenu" class="input-context-menu" style="display:none;"></div>
+
+<div class="toast" id="toast"></div>
+
+<!-- BARRA DE ESTADO STICKY (Se fija al fondo y se detiene al tocar el footer) -->
+<div class="sticky-status-bar">
+  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+    <span id="statusDir" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--panel); border:1px solid var(--border); border-radius:4px;">
+      <span style="color:var(--warn)">⚠️</span> Sin carpeta seleccionada
+    </span>
+    <span id="statusFile" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--panel); border:1px solid var(--border); border-radius:4px;">
+      📄 Sin archivo cargado
+    </span>
+  </div>
+  <div style="font-size:11px; color:var(--muted)">
+    <span id="statusTimestamp"></span>
+  </div>
+</div>
+
+<footer class="app-footer">
+  <!-- COLUMNA 1: Logo + Empresa -->
+  <div style="text-align:center">
+      <div style="margin-bottom:12px">
+        <img src="full_logo.png" alt="Kynetra AU Logo" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #a3a7bd; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+      </div>
+      <h3 style="
+      margin:0 0 4px; 
+      font-size:1.2rem; 
+      color:var(--text);
+      background:linear-gradient(90deg, #3b82f6, #22c55e);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+      ">Kynetra AU</h3>
+      <p style="
+      margin:0 0 12px; 
+      font-size:11px; 
+      color:var(--accent);
+      letter-spacing:1px;
+      text-transform:uppercase;
+      ">Automatización Digital</p>
+      <p style="font-size:12px; line-height:1.6; margin:0">
+        Soluciones tecnológicas para la eficiencia de gestión académica y el cuidado del medio ambiente. 
+        Simplificamos el proceso de calificaciones para docentes e instituciones educativas usando tecnologías avanzadas.
+      </p>
+    </div>
+    
+    <div style="
+        display:grid; 
+        grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); 
+        gap:28px;
+        padding-top:20px;
+      ">
+      <!-- COLUMNA 2: Contacto y Soporte -->
+      <div>
+        <h4 style="
+          margin:0 0 14px; 
+          font-size:14px; 
+          color:var(--text);
+          text-transform:uppercase;
+          letter-spacing:1px;
+          border-bottom:1px solid var(--border);
+          padding-bottom:8px;
+        ">📞 Contacto y Soporte</h4>
+        <ul style="list-style:none; padding:0; margin:0; font-size:12px; line-height:1.9">
+          <li style="margin-bottom:8px">
+            <span style="color:var(--accent); font-weight:600">Soporte técnico:</span><br>
+            <a href="mailto:kynetra.main@gmail.com" style="color:var(--muted); text-decoration:none">
+              📧 kynetra.main@gmail.com
+            </a>
+          </li>
+          <li style="margin-bottom:8px">
+            <span style="color:var(--accent); font-weight:600">Ventas:</span><br>
+            <a href="mailto:kynetra.main@gmail.com" style="color:var(--muted); text-decoration:none">
+              📧 kynetra.main@gmail.com
+            </a>
+          </li>
+          <li style="margin-bottom:8px">
+            <span style="color:var(--accent); font-weight:600">Teléfono:</span><br>
+            <span>📱 +57 323 6039928</span>
+          </li>
+          <li>
+            <span style="color:var(--accent); font-weight:600">Horario de atención:</span><br>
+            <span>🕐 Lun - Vie: 10:00 AM - 8:00 PM</span><br>
+            <span>🕐 Sab y Dom: 12:00 PM - 5:00 PM</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- COLUMNA 3: Datos de la empresa -->
+      <div>
+        <h4 style="
+          margin:0 0 14px; 
+          font-size:14px; 
+          color:var(--text);
+          text-transform:uppercase;
+          letter-spacing:1px;
+          border-bottom:1px solid var(--border);
+          padding-bottom:8px;
+        ">🏢 Datos de la Empresa</h4>
+        <ul style="list-style:none; padding:0; margin:0; font-size:12px; line-height:1.9">
+          <li><span style="color:var(--accent); font-weight:600">Razón social:</span> Kynetra Studios S.A.S.</li>
+          <!--li><span style="color:var(--accent); font-weight:600">NIT:</span> 900.123.456-7</li-->
+          <li><span style="color:var(--accent); font-weight:600">Representante legal:</span><br>Jose Angel Perea Valencia</li>
+          <li><span style="color:var(--accent); font-weight:600">Dirección:</span><br>Buenaventura, VAC, Colombia</li>
+          <li><span style="color:var(--accent); font-weight:600">Sitio web:</span><br>
+            <a href="https://kynetra-studios.github.io/main/" style="color:var(--muted); text-decoration:none">
+              🌐 kynetra-studios.github.io/main
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- COLUMNA 4: Licencias -->
+      <div>
+        <h4 style="
+          margin:0 0 14px; 
+          font-size:14px; 
+          color:var(--text);
+          text-transform:uppercase;
+          letter-spacing:1px;
+          border-bottom:1px solid var(--border);
+          padding-bottom:8px;
+        ">📜 Licencias</h4>
+        <p style="font-size:12px; line-height:1.7; margin:0 0 10px">
+          Este software se distribuye bajo licencia 
+          <strong style="color:var(--text)">Propietaria</strong>. 
+          Queda prohibida su reproducción, distribución o modificación 
+          sin autorización expresa de Kynetra Studios S.A.S. y de Kynetra AU. Para más información, consulta los términos de uso y la política de privacidad en nuestro sitio web.
+        </p>
+        <p style="font-size:11px; line-height:1.7; margin:0 0 10px">
+          <span style="color:var(--accent)">Versión:</span> 1.1.41<br>
+          <span style="color:var(--accent)">Build:</span> 2026.09.13<br>
+          <span style="color:var(--accent)">Tecnología:</span> HTML5, CSS3, JavaScript
+        </p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px">
+          <span style="
+            background:var(--panel2); 
+            padding:4px 10px; 
+            border-radius:4px; 
+            font-size:11px;
+            border:1px solid var(--border);
+          ">© 2026</span>
+          <span style="
+            background:var(--panel2); 
+            padding:4px 10px; 
+            border-radius:4px; 
+            font-size:11px;
+            border:1px solid var(--border);
+          ">Todos los derechos reservados</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Separador -->
+  <div style="
+    max-width:1200px; 
+    margin:24px auto 0; 
+    border-top:1px solid var(--border); 
+    padding-top:16px;
+    text-align:center;
+  ">
+    <p style="margin:0 0 8px; font-size:12px">
+      Kynetra AU - Calificaciones CSV &copy; 2026 · 
+      <a href="https://kynetra-studios.github.io/main/terms.html" style="color:var(--accent); text-decoration:none">Términos de uso</a> · 
+      <a href="https://kynetra-studios.github.io/main/privacy.html" style="color:var(--accent); text-decoration:none">Política de privacidad</a> · 
+      <a href="https://kynetra-studios.github.io/main/cookies.html" style="color:var(--accent); text-decoration:none">Cookies</a>
+    </p>
+    <p style="margin:0; font-size:11px; color:var(--muted)">
+      Hecho con 💙 en Colombia para docentes de todo el mundo
+    </p>
+  </div>
+</footer>
+
+<footer class="app-footer-mobile">
+  <div style="text-align:center">
+      
+      <h3 style="
+        margin:0 0 4px; 
+        font-size:1.2rem; 
+        color:var(--text);
+        background:linear-gradient(90deg, #3b82f6, #22c55e);
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+        background-clip:text;
+      ">Kynetra AU</h3>
+      <p style="
+        margin:0 0 12px; 
+        font-size:11px; 
+        color:var(--accent);
+        letter-spacing:1px;
+        text-transform:uppercase;
+      ">Automatización Digital</p>
+      <p style="font-size:12px; line-height:1.6; margin:0">
+        Soluciones tecnológicas para la eficiencia de gestión académica y el cuidado del medio ambiente. 
+        Simplificamos el proceso de calificaciones para docentes e instituciones educativas usando tecnologías avanzadas.<br><br>Este software se distribuye bajo licencia 
+        <strong style="color:var(--text)">Propietaria</strong>. 
+        Queda prohibida su reproducción, distribución o modificación 
+        sin autorización expresa de Kynetra Studios S.A.S. y de Kynetra AU. Para más información, consulta los términos de uso y la política de privacidad en nuestro sitio web.<br><br>
+        <span style="color:var(--accent)">Versión:</span> 1.1.41 · 
+        <span style="color:var(--accent)">Build:</span> 2026.09.13 · 
+      </p>
+      <p style="margin:0 0 8px; font-size:12px">
+        Kynetra AU - Calificaciones CSV &copy; 2026 · 
+        <a href="https://kynetra-studios.github.io/main/terms.html" style="color:var(--accent); text-decoration:none">Términos de uso</a> · 
+        <a href="https://kynetra-studios.github.io/main/privacy.html" style="color:var(--accent); text-decoration:none">Política de privacidad</a> · 
+        <a href="https://kynetra-studios.github.io/main/cookies.html" style="color:var(--accent); text-decoration:none">Cookies</a> · 
+        <a href="mailto:kynetra.main@gmail.com" style="color:var(--accent); text-decoration:none">Soporte</a>
+      </p>
+      <p style="margin:0; font-size:11px; color:var(--muted)">
+        Hecho con 💙 en Colombia para docentes de todo el mundo
+      </p>
+    </div>
+</footer>
+
+<script>
+/* ============ ESTADO GLOBAL ============ */
+const state = {
+  lastDirName: "",
+  dirHandle: null,
+  config: {
+    jornadas: [],
+    grados: ["0","1","2","3","4","5","6","7","8","9","10","11"],
+    grupos: {},
+    asignaturas: {},
+    ponderacion: {cognitivo:60, social:20, personal:20},
+    notaMinima: 3.0,
+    rango: {min:1.0, max:5.0}
+  },
+  currentFile: null,
+  currentProps: {jornada:"", grado:"", grupo:"", periodo:"1", asignatura:""},
+  slots: {cog:3, soc:1, per:1},
+  evals: {cog:[], soc:[], per:[]}, // {code, name, date}
+  rows: [],
+  auditLog: [],
+  currentEvalEdit: null // {type, index}
+};
+
+/* ============ UTILIDADES ============ */
+const $ = id => document.getElementById(id);
+function toast(msg, type="ok"){
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast show " + type;
+  setTimeout(()=>t.className="toast",3000);
+}
+function openModal(id){$(id).classList.add("active")}
+function closeModal(id){$(id).classList.remove("active")}
+function fmtNum(n){
+  if(n==null||isNaN(n)) return "";
+  return Number(n).toFixed(1);
+}
+function parseNum(s){
+  if(s == null || s === "") return null;
+  const n = parseFloat(String(s).replace(",", "."));
+  return isNaN(n) ? null : n;
+}
+
+/* ============ AUDITORÍA ============ */
+function logAction(action, details=""){
+  const entry = {
+    time: new Date().toLocaleString("es"),
+    action,
+    details
+  };
+  state.auditLog.unshift(entry);
+  if(state.auditLog.length > 500) state.auditLog.pop();
+}
+
+function showAuditLog(){
+  const log = $("auditLog");
+  if(state.auditLog.length === 0){
+    log.innerHTML = '<p style="color:var(--muted); text-align:center">No hay acciones registradas</p>';
+  } else {
+    log.innerHTML = state.auditLog.map(e=>`
+      <div class="audit-entry">
+        <div class="audit-time">${e.time}</div>
+        <div class="audit-action">${e.action}</div>
+        ${e.details ? `<div class="audit-details">${e.details}</div>` : ""}
+      </div>
+    `).join("");
+  }
+  openModal("modalAudit");
+}
+
+function clearAuditLog(){
+  state.auditLog = [];
+  showAuditLog();
+  toast("Registro limpiado");
+}
+
+/* ============ VALIDACIÓN DE CARPETA ============ */
+function requireDir(){
+  if(!state.dirHandle){
+    showAlert("Carpeta requerida", "Debes seleccionar una carpeta antes de realizar esta acción.");
+    return false;
+  }
+  return true;
+}
+
+/* ============ MODALES PERSONALIZADOS ============ */
+function showConfirm(title, message){
+  return new Promise(resolve=>{
+    $("confirmTitle").textContent = title;
+    $("confirmMessage").textContent = message;
+    openModal("modalConfirm");
+    const ok = $("confirmOk");
+    const cancel = $("confirmCancel");
+    const cleanup = ()=>{
+      closeModal("modalConfirm");
+      ok.onclick = null;
+      cancel.onclick = null;
+    };
+    ok.onclick = ()=>{cleanup(); resolve(true)};
+    cancel.onclick = ()=>{cleanup(); resolve(false)};
+  });
+}
+
+function showAlert(title, message){
+  return new Promise(resolve=>{
+    $("alertTitle").textContent = title;
+    $("alertMessage").textContent = message;
+    openModal("modalAlert");
+    const ok = $("alertOk");
+    const cleanup = ()=>{
+      closeModal("modalAlert");
+      ok.onclick = null;
+    };
+    ok.onclick = ()=>{cleanup(); resolve()};
+  });
+}
+
+/* ============ MAIN TABS ============ */
+document.querySelectorAll(".main-tab").forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll(".main-tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
+    tab.classList.add("active");
+    $(`tab${tab.dataset.tab.charAt(0).toUpperCase()+tab.dataset.tab.slice(1)}`).classList.add("active");
+  };
+});
+
+/* ============ STATUS BAR ============ */
+function updateStatusDir(text, type="default"){
+  const el = $("statusDir");
+  el.innerHTML = text;
+  el.style.borderColor = {
+    default: "var(--border)",
+    ok: "var(--ok)",
+    warn: "var(--warn)",
+    err: "var(--bad)"
+  }[type];
+}
+
+function updateStatusFile(text, type="default"){
+  const el = $("statusFile");
+  el.innerHTML = text;
+  el.style.borderColor = {
+    default: "var(--border)",
+    ok: "var(--ok)",
+    warn: "var(--warn)",
+    err: "var(--bad)"
+  }[type];
+}
+
+/* ============ FILE SYSTEM ============ */
+async function selectDirectory(){
+  try{
+    if(!window.showDirectoryPicker) throw new Error("Navegador no soporta File System Access API");
+    state.dirHandle = await window.showDirectoryPicker({mode:"readwrite"});
+
+    // Guardar nombre en estado y localStorage para recordarlo siempre
+    state.config.lastDirName = state.dirHandle.name;
+    localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
+    
+    updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
+    logAction("Carpeta seleccionada", state.dirHandle.name);
+    
+    await loadConfig();
+    await scanCSVsForConfig();
+    refreshPropSelects();
+    toast("Carpeta seleccionada: " + state.dirHandle.name);
+  }catch(e){
+    // Si el usuario cancela el selector, no mostramos error (es comportamiento normal)
+    if(e.name !== 'AbortError') {
+        console.error(e);
+        toast("No se pudo seleccionar la carpeta", "err");
+    }
+  }
+}
+
+async function loadConfig(){
+  try{
+    const fh = await state.dirHandle.getFileHandle("config.json");
+    const file = await fh.getFile();
+    const txt = await file.text();
+    const loaded = JSON.parse(txt);
+    state.config = {...state.config, ...loaded};
+
+    // Sincronización: si config tiene un nombre pero localStorage no, copiarlo
+    if(state.config.lastDirName && !localStorage.getItem('kynetra_last_dir')){
+        localStorage.setItem('kynetra_last_dir', state.config.lastDirName);
+    }
+
+    logAction("Configuración cargada", "config.json");
+  }catch(e){
+    await saveConfig();
+  }
+}
+
+async function saveConfig(){
+  if(!state.dirHandle){toast("Selecciona una carpeta primero","err"); return}
+  
+  state.config.jornadas = $("cfgJornadas").value.split(",").map(s=>s.trim()).filter(Boolean);
+  state.config.ponderacion.cognitivo = +$("cfgPondCog").value || 60;
+  state.config.ponderacion.social = +$("cfgPondSoc").value || 20;
+  state.config.ponderacion.personal = +$("cfgPondPer").value || 20;
+  state.config.notaMinima = +$("cfgMinNota").value || 3.0;
+  state.config.rango.min = +$("cfgRangoMin").value || 1.0;
+  state.config.rango.max = +$("cfgRangoMax").value || 5.0;
+  
+  const gradosSel = [];
+  document.querySelectorAll("#gradosCheckboxes input:checked").forEach(cb=>{
+    gradosSel.push(cb.value);
+  });
+  state.config.grados = gradosSel.sort((a,b)=>+a-+b);
+  
+  const grupos = {};
+  document.querySelectorAll(".grupo-editor").forEach(editor=>{
+    const grado = editor.dataset.grado;
+    const tags = editor.querySelectorAll(".grupo-tag");
+    grupos[grado] = Array.from(tags).map(t=>t.dataset.grupo);
+  });
+  state.config.grupos = grupos;
+  
+  const fh = await state.dirHandle.getFileHandle("config.json",{create:true});
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(state.config,null,2));
+  await w.close();
+  logAction("Configuración guardada", `${gradosSel.length} grados, ${Object.keys(grupos).length} grupos`);
+  refreshPropSelects();
+  closeModal("modalConfig");
+  toast("Ajustes guardados");
+}
+
+async function saveConfigSilent(){
+  const fh = await state.dirHandle.getFileHandle("config.json",{create:true});
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(state.config,null,2));
+  await w.close();
+}
+
+async function scanCSVsForConfig(){
+  for await (const [name, handle] of state.dirHandle.entries()){
+    if(name.endsWith(".csv") && name !== "config.json"){
+      const parts = name.replace(".csv","").split("_");
+      if(parts.length>=5){
+        const [asig, grado, grupo] = parts;
+        const key = grado + "-" + grupo;
+        if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
+        if(!state.config.asignaturas[key].includes(asig))
+          state.config.asignaturas[key].push(asig);
+      }
+    }
+  }
+}
+
+/* ============ CONFIG INTUITIVO ============ */
+function buildConfigUI(){
+  document.querySelectorAll(".config-tab").forEach(tab=>{
+    tab.onclick = ()=>{
+      document.querySelectorAll(".config-tab").forEach(t=>t.classList.remove("active"));
+      document.querySelectorAll(".config-section").forEach(s=>s.classList.remove("active"));
+      tab.classList.add("active");
+      document.querySelector(`[data-section="${tab.dataset.tab}"]`).classList.add("active");
+    };
+  });
+  
+  const allGrados = ["0","1","2","3","4","5","6","7","8","9","10","11"];
+  $("gradosCheckboxes").innerHTML = allGrados.map(g=>`
+    <div class="checkbox-item">
+      <input type="checkbox" id="grado${g}" value="${g}" ${state.config.grados.includes(g)?"checked":""}>
+      <label for="grado${g}">${g}°</label>
+    </div>
+  `).join("");
+  
+  document.querySelectorAll("#gradosCheckboxes input").forEach(cb=>{
+    cb.onchange = buildGruposUI;
+  });
+  
+  buildGruposUI();
+  buildAsignaturasUI();
+}
+
+function buildGruposUI(){
+  const container = $("gruposContainer");
+  const selectedGrados = Array.from(document.querySelectorAll("#gradosCheckboxes input:checked")).map(cb=>cb.value);
+  
+  container.innerHTML = selectedGrados.map(grado=>{
+    const grupos = state.config.grupos[grado] || [];
+    return `
+      <div class="grupo-editor" data-grado="${grado}">
+        <h4>Grado ${grado}°</h4>
+        <div class="grupo-list">
+          ${grupos.map(g=>`
+            <div class="grupo-tag" data-grupo="${g}">
+              ${g}
+              <button onclick="removeGrupo('${grado}','${g}')">×</button>
+            </div>
+          `).join("")}
+        </div>
+        <div style="display:flex; gap:4px">
+          <input type="text" placeholder="Nuevo grupo" id="newGrupo${grado}" style="flex:1">
+          <button onclick="addGrupo('${grado}')">Agregar</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function addGrupo(grado){
+  const input = $(`newGrupo${grado}`);
+  const textoLimpio = input.value.trim();
+  const grupo = textoLimpio.charAt(0).toUpperCase() + textoLimpio.slice(1);
+  if(!grupo) return;
+  
+  if(!state.config.grupos[grado]) state.config.grupos[grado] = [];
+  if(!state.config.grupos[grado].includes(grupo)){
+    state.config.grupos[grado].push(grupo);
+    buildGruposUI();
+    buildAsignaturasUI();
+  }
+  input.value = "";
+}
+
+function removeGrupo(grado, grupo){
+  state.config.grupos[grado] = state.config.grupos[grado].filter(g=>g!==grupo);
+  buildGruposUI();
+  buildAsignaturasUI();
+}
+
+function buildAsignaturasUI(){
+  const selector = $("asigSelector");
+  const options = [];
+  Object.keys(state.config.grupos).forEach(grado=>{
+    state.config.grupos[grado].forEach(grupo=>{
+      options.push(`${grado}-${grupo}`);
+    });
+  });
+  
+  selector.innerHTML = '<option value="">-- Seleccionar --</option>' + 
+    options.map(o=>`<option>${o}</option>`).join("");
+  
+  selector.onchange = ()=>{
+    const key = selector.value;
+    if(!key){
+      $("asignaturasContainer").innerHTML = "";
+      return;
+    }
+    
+    const asigs = state.config.asignaturas[key] || [];
+    $("asignaturasContainer").innerHTML = `
+      <div class="asignatura-editor">
+        <h4>Asignaturas de ${key}</h4>
+        <div class="asignatura-list">
+          ${asigs.map(a=>`
+            <div class="asignatura-tag">
+              ${a}
+              <button onclick="removeAsignatura('${key}','${a}')">×</button>
+            </div>
+          `).join("")}
+        </div>
+        <div style="display:flex; gap:4px">
+          <input type="text" placeholder="Nueva asignatura" id="newAsig${key.replace('-','_')}" style="flex:1">
+          <button onclick="addAsignatura('${key}')">Agregar</button>
+        </div>
+      </div>
+    `;
+  };
+}
+
+function addAsignatura(key){
+  const input = $(`newAsig${key.replace('-','_')}`);
+  const asig = input.value.trim();
+  if(!asig) return;
+  
+  if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
+  if(!state.config.asignaturas[key].includes(asig)){
+    state.config.asignaturas[key].push(asig);
+    buildAsignaturasUI();
+    $(`asigSelector`).value = key;
+    $(`asigSelector`).onchange();
+  }
+  input.value = "";
+}
+
+function removeAsignatura(key, asig){
+  state.config.asignaturas[key] = state.config.asignaturas[key].filter(a=>a!==asig);
+  buildAsignaturasUI();
+  $(`asigSelector`).value = key;
+  $(`asigSelector`).onchange();
+}
+
+/* ============ SELECTS DE PROPIEDADES ============ */
+function refreshPropSelects(){
+  fillSelect("propJornada", state.config.jornadas, state.currentProps.jornada);
+  fillSelect("propGrado", state.config.grados, state.currentProps.grado);
+  updateGrupos();
+  updateAsignaturas();
+}
+function fillSelect(id, items, selected){
+  const sel = $(id);
+  const values = Array.isArray(items) ? [...items] : [];
+  // Al cargar un CSV, la propiedad debe poder mostrarse aunque todavía
+  // no exista en config.json. Esto evita que refreshPropSelects() borre
+  // grupo/asignatura por no encontrarlos en la configuración local.
+  if(selected && !values.some(v => String(v) === String(selected))){
+    values.unshift(selected);
+  }
+  sel.innerHTML = '<option value="">--</option>' + values.map(i=>`<option value="${escapeHtml(i)}" ${String(i)===String(selected)?"selected":""}>${escapeHtml(i)}</option>`).join("");
+  if(selected) sel.value = String(selected);
+}
+function updateGrupos(){
+  const grado = $("propGrado").value;
+  const grupos = state.config.grupos[grado] || [];
+  fillSelect("propGrupo", grupos, state.currentProps.grupo);
+}
+function updateAsignaturas(){
+  const grado = $("propGrado").value;
+  const grupo = $("propGrupo").value;
+  const key = grado + "-" + grupo;
+  const asigs = state.config.asignaturas[key] || [];
+  fillSelect("propAsignatura", asigs, state.currentProps.asignatura);
+}
+
+["propGrado","propGrupo"].forEach(id=>{
+  $(id).addEventListener("change", ()=>{
+    if(id==="propGrado") updateGrupos();
+    updateAsignaturas();
+    updateFileNamePreview();
+  });
+});
+["propJornada","propPeriodo","propAsignatura"].forEach(id=>{
+  $(id).addEventListener("change", updateFileNamePreview);
+});
+
+function updateFileNamePreview(){
+  state.currentProps.jornada = $("propJornada").value;
+  state.currentProps.grado = $("propGrado").value;
+  state.currentProps.grupo = $("propGrupo").value;
+  state.currentProps.periodo = $("propPeriodo").value;
+  state.currentProps.asignatura = $("propAsignatura").value;
+  const name = buildFileName();
+  $("fileNamePreview").textContent = name ? "📄 " + name : "Completa todas las propiedades";
+}
+
+function buildFileName(){
+  const p = state.currentProps;
+  if(!p.asignatura||!p.grado||!p.grupo||!p.periodo||!p.jornada) return "";
+  return `${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`;
+}
+
+/* ============ VALIDACIÓN DE NOTAS ============ */
+function validateNoteInput(input){
+  const val = parseNum(input.value);
+  const {min, max} = state.config.rango;
+  
+  if(input.value === ""){
+    input.classList.remove("invalid","warning","valid");
+    return true;
+  }
+  
+  if(val === null){
+    input.classList.add("invalid");
+    input.classList.remove("warning","valid");
+    return false;
+  }
+  
+  if(val < min || val > max){
+    input.classList.add("invalid");
+    input.classList.remove("warning","valid");
+    return false;
+  }
+  
+  if(val < state.config.notaMinima){
+    input.classList.add("warning");
+    input.classList.remove("invalid","valid");
+  } else {
+    input.classList.add("valid");
+    input.classList.remove("invalid","warning");
+  }
+  
+  return true;
+}
+
+/* ============ EVALUACIONES ============ */
+function generateEvalCodes(){
+  state.evals.cog = [];
+  state.evals.soc = [];
+  state.evals.per = [];
+  
+  for(let i=0;i<state.slots.cog;i++){
+    state.evals.cog.push({code:`C${i+1}`, name:"", date:""});
+  }
+  for(let i=0;i<state.slots.soc;i++){
+    state.evals.soc.push({code:`S${i+1}`, name:"", date:""});
+  }
+  for(let i=0;i<state.slots.per;i++){
+    state.evals.per.push({code:`P${i+1}`, name:"", date:""});
+  }
+}
+
+function editEval(type, index){
+  state.currentEvalEdit = {type, index};
+  const eval_ = state.evals[type][index];
+  $("evalCode").value = eval_.code;
+  $("evalName").value = eval_.name;
+  $("evalDate").value = eval_.date;
+  openModal("modalEval");
+}
+
+function saveEval(){
+  const {type, index} = state.currentEvalEdit;
+  state.evals[type][index].name = $("evalName").value.trim();
+  state.evals[type][index].date = $("evalDate").value;
+  state.evals[type][index].criterion = state.evals[type][index].code;
+  closeModal("modalEval");
+  buildTable();
+  logAction("Evaluación editada", `${state.evals[type][index].code}: ${$("evalName").value}`);
+}
+
+/* ============ ESTADÍSTICAS ============ */
+function updateStats(){
+  if(state.rows.length === 0){
+    $("statTotal").textContent = "0";
+    $("statAprob").textContent = "0 (0%)";
+    $("statReprob").textContent = "0 (0%)";
+    $("statProm").textContent = "0.00";
+    $("statMax").textContent = "-";
+    $("statMin").textContent = "-";
+    $("statSinNotas").textContent = "0";
+    $("statCeldasVac").textContent = "0";
+    $("statFueraRango").textContent = "0";
+    $("dist1").textContent = "0";
+    $("dist2").textContent = "0";
+    $("dist3").textContent = "0";
+    $("dist4").textContent = "0";
+    $("top10Best").innerHTML = '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+    $("top10Worst").innerHTML = '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+    return;
+  }
+  
+  const pond = state.config.ponderacion;
+  const stats = {
+    total: state.rows.length,
+    aprob: 0,
+    reprob: 0,
+    sumDef: 0,
+    maxDef: -Infinity,
+    minDef: Infinity,
+    sinNotas: 0,
+    celdasVac: 0,
+    fueraRango: 0,
+    dist: [0,0,0,0],
+    students: []
+  };
+  
+  state.rows.forEach(row=>{
+    const cogVals = row.cog.map(c=>{
+      const n = parseNum(c.note);
+      if(c.note === "") stats.celdasVac++;
+      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
+      return n===null ? 1.0 : n;
+    });
+    const defCog = cogVals.reduce((a,b)=>a+b,0)/cogVals.length;
+    
+    const socVals = row.soc.map(c=>{
+      const n = parseNum(c.note);
+      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
+      return n;
+    }).filter(n=>n!==null);
+    const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
+    
+    const perVals = row.per.map(c=>{
+      const n = parseNum(c.note);
+      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
+      return n;
+    }).filter(n=>n!==null);
+    const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
+    
+    const def = defCog*pond.cognitivo/100 + defSoc*pond.social/100 + defPer*pond.personal/100;
+    
+    const allNotes = [...row.cog.map(c=>c.note), ...row.soc.map(c=>c.note), ...row.per.map(c=>c.note)];
+    if(allNotes.every(n=>n==="")) stats.sinNotas++;
+    
+    stats.sumDef += def;
+    if(def > stats.maxDef) stats.maxDef = def;
+    if(def < stats.minDef) stats.minDef = def;
+    
+    if(def >= state.config.notaMinima) stats.aprob++;
+    else stats.reprob++;
+    
+    if(def < 2.0) stats.dist[0]++;
+    else if(def < 3.0) stats.dist[1]++;
+    else if(def < 4.0) stats.dist[2]++;
+    else stats.dist[3]++;
+    
+    stats.students.push({name:row.name, def});
+  });
+  
+  $("statTotal").textContent = stats.total;
+  $("statAprob").textContent = `${stats.aprob} (${(stats.aprob/stats.total*100).toFixed(1)}%)`;
+  $("statReprob").textContent = `${stats.reprob} (${(stats.reprob/stats.total*100).toFixed(1)}%)`;
+  $("statProm").textContent = (stats.sumDef/stats.total).toFixed(2);
+  $("statMax").textContent = stats.maxDef === -Infinity ? "-" : stats.maxDef.toFixed(2);
+  $("statMin").textContent = stats.minDef === Infinity ? "-" : stats.minDef.toFixed(2);
+  $("statSinNotas").textContent = stats.sinNotas;
+  $("statCeldasVac").textContent = stats.celdasVac;
+  $("statFueraRango").textContent = stats.fueraRango;
+  $("dist1").textContent = stats.dist[0];
+  $("dist2").textContent = stats.dist[1];
+  $("dist3").textContent = stats.dist[2];
+  $("dist4").textContent = stats.dist[3];
+  
+  const sorted = stats.students.filter(s=>s.name).sort((a,b)=>b.def-a.def);
+  const top10Best = sorted.slice(0,10);
+  const top10Worst = sorted.slice(-10).reverse();
+  
+  $("top10Best").innerHTML = top10Best.length ? top10Best.map((s,i)=>`
+    <div class="top-item">
+      <span class="rank">${i+1}.</span>
+      <span class="name">${s.name}</span>
+      <span class="score">${s.def.toFixed(2)}</span>
+    </div>
+  `).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+  
+  $("top10Worst").innerHTML = top10Worst.length ? top10Worst.map((s,i)=>`
+    <div class="top-item">
+      <span class="rank">${i+1}.</span>
+      <span class="name">${s.name}</span>
+      <span class="score">${s.def.toFixed(2)}</span>
+    </div>
+  `).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+}
+
+/* ============ TABLA ============ */
+function buildTable(){
+  const t = $("gradesTable");
+  const {cog, soc, per} = state.slots;
+  const pond = state.config.ponderacion;
+
+  let html = "<thead>";
+  html += "<tr>";
+  html += `<th id="name-col" rowspan="2">APELLIDOS Y NOMBRES</th>`;
+  html += `<th colspan="${cog}">DESEMPEÑO COGNITIVO (${pond.cognitivo}%)
+    <div class="slot-controls">
+      <button onclick="changeCogSlots(-1)">-</button>
+      <button onclick="changeCogSlots(1)">+</button>
+    </div>
+  </th>`;
+  html += `<th rowspan="2">DEF. COG</th><th rowspan="2">APORTE</th>`;
+  html += `<th colspan="${soc}">DESEMPEÑO SOCIAL (${pond.social}%)</th>`;
+  html += `<th rowspan="2">DEF. SOC</th><th rowspan="2">APORTE</th>`;
+  html += `<th colspan="${per}">DESEMPEÑO PERSONAL (${pond.personal}%)</th>`;
+  html += `<th rowspan="2">DEF. PER</th><th rowspan="2">APORTE</th>`;
+  html += `<th rowspan="2">DEFINITIVA<br>PERIODO</th>`;
+  html += `<th rowspan="2">ESTADO</th>`;
+  html += `<th id="actions-col" rowspan="2">⚙️ Acciones</th>`;
+  html += "</tr>";
+
+  html += "<tr>";
+  for(let i=0;i<cog;i++){
+    const ev = state.evals.cog[i];
+    html += `<th><div class="eval-code" onclick="editEval('cog',${i})" oncontextmenu="showEvalContextMenu(event,'cog',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
+  }
+  for(let i=0;i<soc;i++){
+    const ev = state.evals.soc[i];
+    html += `<th><div class="eval-code" onclick="editEval('soc',${i})" oncontextmenu="showEvalContextMenu(event,'soc',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
+  }
+  for(let i=0;i<per;i++){
+    const ev = state.evals.per[i];
+    html += `<th><div class="eval-code" onclick="editEval('per',${i})" oncontextmenu="showEvalContextMenu(event,'per',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
+  }
+  html += "</tr></thead>";
+
+  html += `<tbody id="tbody"></tbody>`;
+  t.innerHTML = html;
+
+  renderRows();
+}
+
+function renderRows(){
+  const tbody = $("tbody");
+  if(!tbody) return;
+  const {cog, soc, per} = state.slots;
+  let html = "";
+  
+  state.rows.forEach((row, idx)=>{
+    html += `<tr data-idx="${idx}">`;
+    
+    // Columna de Nombre
+    html += `<td><input id="name-input" data-f="name" value="${escapeHtml(row.name.toUpperCase())}" oninput="state.rows[${idx}].name = this.value"></td>`;
+    
+        // Desempeño Cognitivo
+    for(let i=0; i<cog; i++){
+      const n = row.cog[i] || {note:""};
+      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="cog" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'cog',${i},this.value); return false;" onblur="handleInputBlur(event,'cog',${i})" onkeydown="handleInputKeydown(event,'cog',${i})" oninput="handleNumericInput(event,'cog',${i})"></td>`;
+    }
+    html += `<td class="def-cell" data-c="defCog"></td><td class="def-cell" data-c="apCog"></td>`;
+    
+    // Desempeño Social
+    for(let i=0; i<soc; i++){
+      const n = row.soc[i] || {note:""};
+      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="soc" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'soc',${i},this.value); return false;" onblur="handleInputBlur(event,'soc',${i})" onkeydown="handleInputKeydown(event,'soc',${i})" oninput="handleNumericInput(event,'soc',${i})"></td>`;
+    }
+    html += `<td class="def-cell" data-c="defSoc"></td><td class="def-cell" data-c="apSoc"></td>`;
+    
+    // Desempeño Personal
+    for(let i=0; i<per; i++){
+      const n = row.per[i] || {note:""};
+      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="per" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'per',${i},this.value); return false;" onblur="handleInputBlur(event,'per',${i})" onkeydown="handleInputKeydown(event,'per',${i})" oninput="handleNumericInput(event,'per',${i})"></td>`;
+    }
+    html += `<td class="def-cell" data-c="defPer"></td><td class="def-cell" data-c="apPer"></td>`;
+    
+    // Columnas finales
+    html += `<td class="def-cell" data-c="def"></td>`;
+    html += `<td class="def-cell" data-c="estado"></td>`;
+    html += `<td id="actions-td"><div class="row-actions"><button class="btn-add" onclick="addRow(${idx})">➕</button><button class="btn-del" onclick="delRow(${idx})">🗑️</button></div></td>`;
+    html += "</tr>";
+  });
+  
+  tbody.innerHTML = html;
+
+  // Recalcular todo al renderizar
+  state.rows.forEach((_,i)=>calcRow(i));
+  updateStats();
+}
+
+function calcRow(idx){
+  const row = state.rows[idx];
+  const tr = document.querySelector(`tr[data-idx="${idx}"]`);
+  if(!tr) return;
+  const pond = state.config.ponderacion;
+
+  const cogVals = row.cog.map(c=>{
+    const n = parseNum(c.note);
+    return n===null ? 1.0 : n;
+  });
+  const defCog = cogVals.length ? cogVals.reduce((a,b)=>a+b,0)/cogVals.length : 0;
+  const apCog = defCog * pond.cognitivo/100;
+
+  const socVals = row.soc.map(c=>parseNum(c.note)).filter(n=>n!==null);
+  const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
+  const apSoc = defSoc * pond.social/100;
+
+  const perVals = row.per.map(c=>parseNum(c.note)).filter(n=>n!==null);
+  const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
+  const apPer = defPer * pond.personal/100;
+
+  const def = apCog + apSoc + apPer;
+  const estado = def >= state.config.notaMinima ? "Aprobado" : "Reprobado";
+
+  tr.querySelector('[data-c="defCog"]').textContent = fmtNum(defCog);
+  tr.querySelector('[data-c="apCog"]').textContent = fmtNum(apCog);
+  tr.querySelector('[data-c="defSoc"]').textContent = fmtNum(defSoc);
+  tr.querySelector('[data-c="apSoc"]').textContent = fmtNum(apSoc);
+  tr.querySelector('[data-c="defPer"]').textContent = fmtNum(defPer);
+  tr.querySelector('[data-c="apPer"]').textContent = fmtNum(apPer);
+  tr.querySelector('[data-c="def"]').textContent = fmtNum(def);
+  const est = tr.querySelector('[data-c="estado"]');
+  est.textContent = estado;
+  est.className = "def-cell " + (estado==="Aprobado"?"estado-aprobado":"estado-reprobado");
+}
+
+async function changeCogSlots(delta){
+  const newSlots = state.slots.cog + delta;
+  if(newSlots < 1 || newSlots > 8){
+    await showAlert("Límite alcanzado", "El desempeño cognitivo admite entre 1 y 8 casillas de notas.");
+    return;
+  }
+  
+  if(delta < 0 && state.rows.some(r=>r.cog[newSlots]?.note)){
+    const ok = await showConfirm("Eliminar columna", "Hay notas en la columna que se eliminará. ¿Continuar?");
+    if(!ok) return;
+  }
+  
+  state.slots.cog = newSlots;
+  if(delta > 0){
+    state.evals.cog.push({code:`C${newSlots}`, name:"", date:""});
+    state.rows.forEach(r=>r.cog.push({note:""}));
+  } else {
+    state.evals.cog.pop();
+    state.rows.forEach(r=>r.cog.pop());
+  }
+  logAction("Casillas cognitivo cambiadas", `${state.slots.cog} casillas`);
+  buildTable();
+  toast(`Casillas cognitivo: ${newSlots}`);
+}
+
+function addRow(afterIdx){
+  const {cog, soc, per} = state.slots;
+  const newRow = {
+    name:"",
+    cog: Array.from({length:cog},()=>({note:""})),
+    soc: Array.from({length:soc},()=>({note:""})),
+    per: Array.from({length:per},()=>({note:""}))
+  };
+  state.rows.splice(afterIdx+1, 0, newRow);
+  renderRows();
+  logAction("Estudiante agregado", `Fila ${afterIdx+2}`);
+}
+
+async function delRow(idx){
+  const ok = await showConfirm("Eliminar estudiante", "¿Eliminar este estudiante?");
+  if(!ok) return;
+  const name = state.rows[idx].name || `Fila ${idx+1}`;
+  state.rows.splice(idx,1);
+  renderRows();
+  logAction("Estudiante eliminado", name);
+}
+
+function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+/* ============ CSV I/O ============ */
+function parseCSV(text){
+  const rows = [];
+  let cur = [], field = "", inQ = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQ){
+      if(c==='"' && text[i+1]==='"'){field+='"'; i++}
+      else if(c==='"') inQ=false;
+      else field+=c;
+    } else {
+      if(c==='"') inQ=true;
+      else if(c===','){cur.push(field); field=""}
+      else if(c==='\n'){cur.push(field); rows.push(cur); cur=[]; field=""}
+      else if(c==='\r'){}
+      else field+=c;
+    }
+  }
+  if(field||cur.length){cur.push(field); rows.push(cur)}
+  return rows.filter(r=>r.some(c=>c!==""));
+}
+
+function toCSV(rows){
+  return rows.map(r=>r.map(c=>{
+    const s = String(c??"");
+    return s.includes(",")||s.includes('"')||s.includes("\n") ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(",")).join("\n");
+}
+
+async function loadCSVFile(){
+  if(!requireDir()) return;
+  const input = document.createElement("input");
+  input.type="file";
+  input.accept=".csv";
+
+  input.onchange = async e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
+    try{
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if(rows.length < 2){
+        toast("CSV vacío o inválido","err");
+        return;
+      }
+
+      const headerRow = rows[0] || [];
+      const metaRow = rows[1] || [];
+
+      // Detectar la estructura por las columnas de cierre.
+      const defCogIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF COG");
+      const defSocIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF SOC");
+      const defPerIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF PER");
+
+      if(defCogIdx <= 0 || defSocIdx <= defCogIdx || defPerIdx <= defSocIdx){
+        toast("No se pudo detectar la estructura de desempeños del CSV","err");
+        logAction("Error cargando CSV", "Faltan DEF. COG, DEF. SOC o DEF. PER.");
+        return;
+      }
+
+      const cogStart = 1;
+      const socStart = defCogIdx + 2; // DEF + APORTE
+      const perStart = defSocIdx + 2; // DEF + APORTE
+      const cogSlots = defCogIdx - cogStart;
+      const socSlots = defSocIdx - socStart;
+      const perSlots = defPerIdx - perStart;
+
+      if(cogSlots < 1 || socSlots < 1 || perSlots < 1){
+        toast("La estructura del CSV no contiene columnas válidas de desempeño","err");
+        return;
+      }
+
+      state.slots = {cog:cogSlots, soc:socSlots, per:perSlots};
+      generateEvalCodes();
+
+      // Recuperar nombre, criterio/código y fecha de cada columna.
+      const loadEvalMeta = (type, startCol, count)=>{
+        for(let i=0;i<count;i++){
+          const ev = state.evals[type][i];
+          const rawName = (headerRow[startCol+i] || "").trim();
+          const rawMeta = (metaRow[startCol+i] || "").trim();
+
+          ev.name = rawName && !/^EVALUACI[ÓO]N\s+\d+$/i.test(rawName) ? rawName : "";
+
+          if(rawMeta.includes("|")){
+            const [criterion, date] = rawMeta.split("|");
+            ev.code = criterion.trim() || ev.code;
+            ev.criterion = ev.code;
+            ev.date = (date || "").trim();
+          }else if(/^[CSP]\d+$/i.test(rawMeta)){
+            ev.code = rawMeta.toUpperCase();
+            ev.criterion = ev.code;
+            ev.date = "";
+          }else{
+            ev.criterion = ev.code;
+            ev.date = rawMeta;
+          }
+        }
+      };
+
+      loadEvalMeta("cog", cogStart, cogSlots);
+      loadEvalMeta("soc", socStart, socSlots);
+      loadEvalMeta("per", perStart, perSlots);
+
+      // Propiedades desde el nombre:
+      // Historia_6-SEXTO 1_P1_Mañana.csv -> Historia / 6 / SEXTO 1 / 1 / Mañana
+      const baseName = file.name.replace(/\.csv$/i,"");
+      const parts = baseName.split("_");
+
+      state.currentProps = {jornada:"", grado:"", grupo:"", periodo:"", asignatura:""};
+
+      state.currentProps.asignatura = parts[0].trim();
+
+      const grado = parts[1].split("-")[0];
+      console.log("Grado detectado:", grado);
+      const grupo = parts[1].split("-")[1];
+      console.log("Grupo detectado:", grupo);
+
+      state.currentProps.grado = grado;
+      state.currentProps.grupo = grupo;
+
+      state.currentProps.periodo = (parts[2] || "").replace(/[^0-9]/g,"") || "1";
+      state.currentProps.jornada = parts.slice(3).join("_").trim();
+
+      state.currentFile = file.name;
+
+      refreshPropSelects();
+      $("propPeriodo").value = String(state.currentProps.periodo || "1");
+      if($("propPeriodo").value !== String(state.currentProps.periodo || "1")){
+
+        const opt = document.createElement("option");
+        opt.value = String(state.currentProps.periodo || "1");
+        opt.textContent = String(state.currentProps.periodo || "1");
+        $("propPeriodo").appendChild(opt);
+        $("propPeriodo").value = String(state.currentProps.periodo || "1");
+      }
+      updateFileNamePreview();
+
+      state.rows = [];
+
+      // Las dos primeras filas son encabezado y metadata.
+      for(let r=2;r<rows.length;r++){
+        const row = rows[r] || [];
+        if(!row[0] || row[0].trim() === "") continue;
+
+        const student = {name:row[0].trim(), cog:[], soc:[], per:[]};
+
+        for(let i=0;i<cogSlots;i++) student.cog.push({note:row[cogStart+i] || ""});
+        for(let i=0;i<socSlots;i++) student.soc.push({note:row[socStart+i] || ""});
+        for(let i=0;i<perSlots;i++) student.per.push({note:row[perStart+i] || ""});
+
+        state.rows.push(student);
+      }
+
+      buildTable();
+
+      $("statusFile").textContent = "📄 " + file.name;
+      logAction("CSV cargado", `${file.name} - ${state.rows.length} estudiantes - ${cogSlots}/${socSlots}/${perSlots} columnas`);
+      toast("CSV cargado correctamente: " + state.rows.length + " estudiantes");
+
+    }catch(err){
+      console.error(err);
+      toast("Error al cargar CSV: " + err.message, "err");
+      logAction("Error cargando CSV", err.message);
+    }
+  };
+
+  input.click();
+}
+
+function normalizeHeader(value){
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .toUpperCase()
+    .replace(/\s+/g," ")
+    .replace(/\./g,"")
+    .trim();
+}
+
+async function saveCSV(){
+  if(!requireDir()) return;
+
+  const fname = buildFileName();
+  if(!fname){
+    toast("Completa todas las propiedades del CSV","err");
+    return;
+  }
+
+  const {cog, soc, per} = state.slots;
+  const header1 = ["APELLIDOS Y NOMBRES"];
+  const header2 = [""];
+
+  const appendEvalHeaders = (type, count)=>{
+    for(let i=0;i<count;i++){
+      const ev = state.evals[type][i];
+      header1.push(ev.name || `Evaluación ${i+1}`);
+      // Segunda fila: criterio estable de la columna + fecha opcional.
+      header2.push(`${ev.criterion || ev.code}${ev.date ? "|" + ev.date : ""}`);
+    }
+  };
+
+  appendEvalHeaders("cog", cog);
+  header1.push("DEF. COG","APORTE");
+  header2.push("","");
+
+  appendEvalHeaders("soc", soc);
+  header1.push("DEF. SOC","APORTE");
+  header2.push("","");
+
+  appendEvalHeaders("per", per);
+  header1.push("DEF. PER","APORTE","DEFINITIVA","ESTADO");
+  header2.push("","","","");
+
+  const dataRows = [header1, header2];
+
+  state.rows.forEach(row=>{
+    const r = [row.name];
+
+    row.cog.forEach(c=>r.push(c.note));
+    const cogVals = row.cog.map(c=>{const n=parseNum(c.note); return n===null?1.0:n});
+    const defCog = cogVals.length ? cogVals.reduce((a,b)=>a+b,0)/cogVals.length : 0;
+    r.push(fmtNum(defCog), fmtNum(defCog*state.config.ponderacion.cognitivo/100));
+
+    row.soc.forEach(c=>r.push(c.note));
+    const socVals = row.soc.map(c=>parseNum(c.note)).filter(n=>n!==null);
+    const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
+    r.push(fmtNum(defSoc), fmtNum(defSoc*state.config.ponderacion.social/100));
+
+    row.per.forEach(c=>r.push(c.note));
+    const perVals = row.per.map(c=>parseNum(c.note)).filter(n=>n!==null);
+    const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
+    r.push(fmtNum(defPer), fmtNum(defPer*state.config.ponderacion.personal/100));
+
+    const def = defCog*state.config.ponderacion.cognitivo/100 +
+                defSoc*state.config.ponderacion.social/100 +
+                defPer*state.config.ponderacion.personal/100;
+
+    r.push(fmtNum(def), def>=state.config.notaMinima?"Aprobado":"Reprobado");
+    dataRows.push(r);
+  });
+
+  const csv = toCSV(dataRows);
+  const fh = await state.dirHandle.getFileHandle(fname,{create:true});
+  const w = await fh.createWritable();
+  await w.write(csv);
+  await w.close();
+
+  state.currentFile = fname;
+  $("statusFile").textContent = "📄 " + fname;
+  logAction("CSV guardado", `${fname} - ${state.rows.length} estudiantes`);
+  toast("Guardado: " + fname);
+
+  const key = state.currentProps.grado + "-" + state.currentProps.grupo;
+  if(!state.config.asignaturas[key]) state.config.asignaturas[key]=[];
+  if(!state.config.asignaturas[key].includes(state.currentProps.asignatura)){
+    state.config.asignaturas[key].push(state.currentProps.asignatura);
+    await saveConfigSilent();
+  }
+}
+
+/* ============ EXPORT/IMPORT CONFIG ============ */
+async function exportConfig(){
+  if(!requireDir()) return;
+  const timestamp = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
+  const fname = `backup_config_${timestamp}.json`;
+  const fh = await state.dirHandle.getFileHandle(fname,{create:true});
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(state.config,null,2));
+  await w.close();
+  logAction("Backup exportado", fname);
+  toast("Backup exportado: " + fname);
+  showBackups();
+}
+
+async function importConfig(){
+  if(!requireDir()) return;
+  const input = document.createElement("input");
+  input.type="file"; input.accept=".json";
+  input.onchange = async e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const loaded = JSON.parse(text);
+      state.config = {...state.config, ...loaded};
+      await saveConfigSilent();
+      refreshPropSelects();
+      logAction("Configuración importada", file.name);
+      toast("Configuración importada");
+      showBackups();
+    }catch(err){
+      toast("Error al importar: " + err.message, "err");
+    }
+  };
+  input.click();
+}
+
+async function showBackups(){
+  if(!requireDir()) return;
+  const backups = [];
+  for await (const [name, handle] of state.dirHandle.entries()){
+    if(name.startsWith("backup_config_") && name.endsWith(".json")){
+      try{
+        const file = await handle.getFile();
+        const text = await file.text();
+        const config = JSON.parse(text);
+        backups.push({
+          name,
+          size: file.size,
+          date: file.lastModified,
+          config
+        });
+      }catch(e){}
+    }
+  }
+  
+  if(backups.length === 0){
+    $("backupsList").innerHTML = '<p style="color:var(--muted); text-align:center; grid-column:1/-1">No hay backups disponibles</p>';
+  } else {
+    backups.sort((a,b)=>b.date-a.date);
+    $("backupsList").innerHTML = backups.map(b=>{
+      const d = new Date(b.date).toLocaleString("es");
+      const size = (b.size/1024).toFixed(1);
+      const summary = `
+        <div><span>Grados:</span><span>${b.config.grados?.length||0}</span></div>
+        <div><span>Asignaturas:</span><span>${Object.keys(b.config.asignaturas||{}).length}</span></div>
+        <div><span>Nota mín:</span><span>${b.config.notaMinima||"-"}</span></div>
+      `;
+      return `
+        <div class="backup-card" onclick="loadBackup('${b.name}')">
+          <h4>${b.name}</h4>
+          <div class="meta">${d} • ${size} KB</div>
+          <div class="summary">${summary}</div>
+        </div>
+      `;
+    }).join("");
+  }
+  
+  openModal("modalBackups");
+}
+
+async function loadBackup(name){
+  const ok = await showConfirm("Cargar backup", `¿Cargar la configuración "${name}"? Esto reemplazará la configuración actual.`);
+  if(!ok) return;
+  
+  try{
+    const fh = await state.dirHandle.getFileHandle(name);
+    const file = await fh.getFile();
+    const text = await file.text();
+    const loaded = JSON.parse(text);
+    state.config = {...state.config, ...loaded};
+    await saveConfigSilent();
+    refreshPropSelects();
+    closeModal("modalBackups");
+    logAction("Backup cargado", name);
+    toast("Backup cargado: " + name);
+  }catch(err){
+    toast("Error al cargar: " + err.message, "err");
+  }
+}
+
+/* ============ NUEVO CSV ============ */
+function createNewCSV(){
+  if(!requireDir()) return;
+  state.slots = {
+    cog: Math.max(1,Math.min(6,+$("newCogSlots").value||4)),
+    soc: Math.max(1,Math.min(3,+$("newSocSlots").value||3)),
+    per: Math.max(1,Math.min(3,+$("newPerSlots").value||3))
+  };
+  generateEvalCodes();
+  state.rows = [];
+  state.currentFile = null;
+  buildTable();
+  addRow(-1);
+  closeModal("modalNew");
+  updateFileNamePreview();
+  $("statusFile").textContent = "📄 Nuevo (sin guardar)";
+  logAction("CSV nuevo creado", `${state.slots.cog}+${state.slots.soc}+${state.slots.per} casillas`);
+  toast("CSV nuevo creado");
+}
+
+/* ============ SUBIR ESTUDIANTES MASIVAMENTE ============ */
+function openUploadStudentsModal(){
+  if(!requireDir()) return;
+  $("studentsList").value = "";
+  $("uploadPreview").style.display = "none";
+  openModal("modalUploadStudents");
+  logAction("Modal de subida de estudiantes abierto", "");
+}
+
+function detectAndFormatName(fullName){
+  // Limpia espacios extras
+  fullName = fullName.trim().replace(/\s+/g, ' ');
+  
+  if(!fullName) return null;
+  
+  // Divide en palabras
+  const words = fullName.split(' ');
+  
+  // Si tiene 2 palabras: "Nombre Apellido" o "Apellido Nombre"
+  // Si tiene 3+ palabras: "Nombre(s) Apellido(s)"
+  
+  // Heurística: si la primera palabra es corta (<=3 chars) probablemente es inicial
+  // Si la última palabra es larga, probablemente es apellido compuesto
+  
+  // Detectar si ya está en formato "Apellidos Nombres"
+  // Convención colombiana: apellidos primero, luego nombres
+  // Ejemplo: "Moreno Potes Juan Carlos" vs "Juan Carlos Moreno Potes"
+  
+  // Estrategia: si el texto tiene 2 palabras, asumimos "Nombre Apellido"
+  // Si tiene 3+ palabras, buscamos patrones comunes
+  
+  if(words.length === 2){
+    // Probablemente "Nombre Apellido" → invertir a "Apellido Nombre"
+    return `${words[1]} ${words[0]}`;
+  }
+  
+  if(words.length === 3){
+    // Podría ser "Nombre Apellido1 Apellido2" o "Nombre1 Nombre2 Apellido"
+    // Heurística: si la última palabra es larga (>5 chars), es apellido
+    // Si la primera palabra es común (Juan, María, Pedro, etc.), es nombre
+    
+    const commonNames = ['juan','maria','pedro','jose','luis','carlos','ana','laura','diego','andres','camila','valentina','santiago','mateo','daniel','miguel','rafael','fernando','alberto','ricardo'];
+    const firstLower = words[0].toLowerCase();
+    
+    if(commonNames.includes(firstLower)){
+      // Formato: "Nombre Apellido1 Apellido2" → "Apellido1 Apellido2 Nombre"
+      return `${words[1]} ${words[2]} ${words[0]}`;
+    } else {
+      // Ya está en formato "Apellido1 Apellido2 Nombre"
+      return fullName;
+    }
+  }
+  
+  if(words.length >= 4){
+    // "Nombre1 Nombre2 Apellido1 Apellido2" o "Apellido1 Apellido2 Nombre1 Nombre2"
+    const commonNames = ['juan','maria','pedro','jose','luis','carlos','ana','laura','diego','andres','camila','valentina','santiago','mateo','daniel','miguel','rafael','fernando','alberto','ricardo','jorge','pablo','roberto','francisco','antonio','manuel','alejandro','gabriela','patricia','elizabeth','carmen','rosa'];
+    
+    // Buscar dónde empiezan los apellidos (primera palabra que NO es nombre común)
+    let apellidoStart = 0;
+    for(let i=0; i<words.length; i++){
+      if(!commonNames.includes(words[i].toLowerCase())){
+        apellidoStart = i;
+        break;
+      }
+    }
+    
+    if(apellidoStart === 0){
+      // Ya está en formato apellidos primero
+      return fullName;
+    }
+    
+    // Reorganizar: apellidos primero, luego nombres
+    const apellidos = words.slice(apellidoStart).join(' ');
+    const nombres = words.slice(0, apellidoStart).join(' ');
+    return `${apellidos} ${nombres}`;
+  }
+  
+  return fullName;
+}
+
+function previewStudents(){
+  const text = $("studentsList").value.trim();
+  if(!text){
+    showAlert("Lista vacía", "Por favor ingresa al menos un estudiante.");
+    return;
+  }
+  
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  const autoSort = $("autoSort").checked;
+  const detectFormat = $("detectFormat").checked;
+  
+  let students = lines.map(line=>{
+    if(detectFormat){
+      return detectAndFormatName(line);
+    }
+    return line.trim();
+  }).filter(n=>n!==null);
+  
+  if(autoSort){
+    students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
+  }
+  
+  $("previewCount").textContent = students.length;
+  $("previewList").innerHTML = students.map((s,i)=>`
+    <div style="padding:4px 0; border-bottom:1px solid var(--border); display:flex; gap:8px">
+      <span style="color:var(--accent); font-weight:600; min-width:20px">${i+1}.</span>
+      <span>${s}</span>
+    </div>
+  `).join("");
+  
+  $("uploadPreview").style.display = "block";
+}
+
+function processStudentsUpload(){
+  const text = $("studentsList").value.trim();
+  if(!text){
+    showAlert("Lista vacía", "Por favor ingresa al menos un estudiante.");
+    return;
+  }
+  
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  const autoSort = $("autoSort").checked;
+  const detectFormat = $("detectFormat").checked;
+  
+  let students = lines.map(line=>{
+    if(detectFormat){
+      return detectAndFormatName(line);
+    }
+    return line.trim();
+  }).filter(n=>n!==null);
+  
+  if(autoSort){
+    students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
+  }
+  
+  // Crear filas para cada estudiante
+  const {cog, soc, per} = state.slots;
+  students.forEach(name=>{
+    const newRow = {
+      name: name,
+      cog: Array.from({length:cog},()=>({note:""})),
+      soc: Array.from({length:soc},()=>({note:""})),
+      per: Array.from({length:per},()=>({note:""}))
+    };
+    state.rows.push(newRow);
+  });
+  
+  renderRows();
+  closeModal("modalUploadStudents");
+  logAction("Estudiantes subidos masivamente", `${students.length} estudiantes agregados`);
+  toast(`${students.length} estudiantes agregados exitosamente`);
+}
+
+/* ============ IMPRIMIR ============ */
+function printTable(){
+  const info = $("printInfo");
+  if(info){
+    const p = state.currentProps;
+    info.textContent = `${p.asignatura} - Grado ${p.grado} - Grupo ${p.grupo} - Periodo ${p.periodo} - Jornada: ${p.jornada}`;
+  }
+  logAction("Impresión solicitada", "");
+  window.print();
+}
+
+/* ============ MENU CONTEXTUAL EVAL-CODE ============ */
+function showEvalContextMenu(e, type, index){
+  hideInputContextMenu();
+  e.preventDefault();
+  e.stopPropagation();
+  const menu = document.getElementById('evalContextMenu');
+  const groups = ['cog','soc','per'];
+  const groupNames = {cog:'Cognitivo', soc:'Social', per:'Personal'};
+  
+  let html = `<div class="menu-title">📋 Pegar valores en: ${state.evals[type][index].code} (${state.evals[type][index].name||'Sin nombre'})</div>`;
+  
+  groups.forEach(g => {
+    html += `<div class="menu-group">`;
+    html += `<div class="menu-group-title">Desempeño ${groupNames[g]}</div>`;
+    state.evals[g].forEach((ev, i) => {
+      const disabled = (g===type && i===index) ? 'disabled' : '';
+      const label = `${ev.code}${ev.name ? ' - '+ev.name : ''}`;
+      html += `<div class="menu-item ${disabled}" data-from-type="${g}" data-from-idx="${i}">← Copiar de: ${label}</div>`;
+    });
+    html += `</div>`;
+  });
+  
+  menu.innerHTML = html;
+  menu.style.display = 'block';
+  
+  // Forzar reflow para obtener dimensiones reales antes de calcular posición
+  void menu.offsetWidth; 
+  
+  let x = e.pageX;
+  let y = e.pageY;
+  
+  // 1. Ajustar si se sale por la DERECHA
+  if (x + menu.offsetWidth > window.innerWidth + window.scrollX) {
+    x = window.innerWidth + window.scrollX - menu.offsetWidth - 10;
+  }
+  // 2. Ajustar si se sale por ABAJO
+  if (y + menu.offsetHeight > window.innerHeight + window.scrollY) {
+    y = window.innerHeight + window.scrollY - menu.offsetHeight - 10;
+  }
+  // 3. Ajustar si se sale por la IZQUIERDA
+  if (x < window.scrollX) {
+    x = window.scrollX + 10;
+  }
+  // 4. Ajustar si se sale por ARRIBA
+  if (y < window.scrollY) {
+    y = window.scrollY + 10;
+  }
+  
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  
+  menu.querySelectorAll('.menu-item:not(.disabled)').forEach(item => {
+    item.onclick = () => {
+      copyColumn(item.dataset.fromType, +item.dataset.fromIdx, type, index);
+      hideEvalContextMenu();
+    };
+  });
+}
+
+function hideEvalContextMenu(){
+  const menu = document.getElementById('evalContextMenu');
+  if(menu) menu.style.display = 'none';
+}
+
+function copyColumn(fromType, fromIdx, toType, toIdx){
+  if(state.rows.length === 0){
+    toast('No hay estudiantes para copiar','err');
+    return;
+  }
+  
+  const tieneFilasVacias = state.rows.some(row => !row[fromType]?.[fromIdx] || row[fromType][fromIdx].note === '');
+  if (tieneFilasVacias) {
+    toast('No se puede copiar porque la columna de origen tiene celdas vacías', 'err');
+    return;
+  }
+
+  let count = 0;
+  state.rows.forEach(row => {
+    const val = row[fromType][fromIdx]?.note || '';
+    if(row[toType][toIdx]) row[toType][toIdx].note = val;
+    count++;
+  });
+  logAction('Columna copiada', `De ${state.evals[fromType][fromIdx].code} a ${state.evals[toType][toIdx].code}`);
+  buildTable();
+  toast(`Copiado: ${state.evals[fromType][fromIdx].code} → ${state.evals[toType][toIdx].code}`);
+}
+
+/* ============ MENU CONTEXTUAL INPUT DATA-F ============ */
+function showInputContextMenu(e, type, idx, value){
+  hideEvalContextMenu();
+  e.preventDefault();
+  e.stopPropagation();
+  const menu = document.getElementById('inputContextMenu');
+  menu.innerHTML = `
+    <div class="menu-title">📋 Valor: "${value}" → ${state.evals[type][idx].code}</div>
+    <div class="menu-item" data-action="copy-column">📝 Copiar este valor a TODA la columna</div>
+    <div class="menu-item" data-action="clear-column">🗑️ Limpiar toda la columna</div>
+  `;
+  menu.style.display = 'block';
+  menu.style.left = e.pageX + 'px';
+  menu.style.top = e.pageY + 'px';
+  
+  const rect = menu.getBoundingClientRect();
+  if(rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 10) + 'px';
+  if(rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 10) + 'px';
+  
+  menu.querySelector('[data-action="copy-column"]').onclick = () => {
+    copyValueToColumn(type, idx, value);
+    hideInputContextMenu();
+  };
+  menu.querySelector('[data-action="clear-column"]').onclick = () => {
+    copyValueToColumn(type, idx, '');
+    hideInputContextMenu();
+  };
+}
+
+function hideInputContextMenu(){
+  const menu = document.getElementById('inputContextMenu');
+  if(menu) menu.style.display = 'none';
+}
+
+function copyValueToColumn(type, idx, value){
+  if(value === ''){
+    toast('Esta columna no se pudo copiar porque el valor está vacío', 'err');
+    return;
+  }
+  if(state.rows.length === 0) return;
+  let count = 0;
+  state.rows.forEach(row => {
+    if(row[type][idx]) {
+      row[type][idx].note = value;
+      count++;
+    }
+  });
+
+  logAction('Columna actualizada', `${state.evals[type][idx].code}: "${value}" aplicado a ${count} filas`);
+  renderRows();
+  toast(`Valor aplicado a ${count} estudiantes`);
+}
+
+/* ============ CIERRE INTELIGENTE DE MENÚS CONTEXTUALES ============ */
+document.addEventListener('click', (e) => {
+    // Solo ocultar el menú de eval-code si el clic NO fue dentro del menú NI en el código de evaluación
+    if (!e.target.closest('.eval-context-menu') && !e.target.closest('.eval-code')) {
+        hideEvalContextMenu();
+    }
+    
+    // Solo ocultar el menú de input si el clic NO fue dentro del menú
+    if (!e.target.closest('.input-context-menu')) {
+        hideInputContextMenu();
+    }
+});
+
+document.addEventListener('scroll', () => { 
+    hideEvalContextMenu(); 
+    hideInputContextMenu(); 
+}, true);
+
+/* ============ FORMATO DE INPUT CON BLUR ============ */
+function formatInputValue(value){
+  if(value === null || value === undefined || value === "") return "";
+  
+  let cleaned = String(value).trim();
+  
+  // Limpiar puntos o comas al final
+  if(cleaned.endsWith('.') || cleaned.endsWith(',')) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  
+  const num = parseNum(cleaned);
+  if(num === null) return "";
+  
+  // Obtener el máximo desde tu configuración (Asumiendo que se guarda en state.rango.max)
+  const maxScale = (typeof state !== 'undefined' && state.config.rango && state.config.rango.max) ? state.config.rango.max : 5;
+
+  // CASO 1: ESCALA CORTA (Máximo 5 o menos, ej: de 1 a 10) -> Aplicar atajo inteligente
+  if (maxScale < 10) {
+    // Solo si el usuario NO escribió explícitamente un punto o una coma
+    if (!cleaned.includes('.') && !cleaned.includes(',')) {
+      const digits = cleaned.length;
+      
+      if (digits === 2) {
+        return (num / 10).toFixed(1);  // "10" -> "1.0", "50" -> "5.0"
+      }
+    }
+    // Si ya tenía punto/coma (ej: "4.0"), pasa directo al formato estándar
+    return num.toFixed(1); 
+  } else {
+    // CASO 2: ESCALAS MAYORES A 10 (ej: de 10 a 50, de 1 a 100, etc.)
+    // NO se altera el entero bajo ninguna circunstancia. "40" -> "40.0", "10" -> "10.0"
+    return num.toFixed(1);
+  }
+}
+
+function handleInputBlur(e, type, idx){
+  const formatted = formatInputValue(e.target.value);
+  e.target.value = formatted;
+  
+  const tr = e.target.closest('tr');
+  if (!tr) return; 
+  
+  const rowIdx = +tr.dataset.idx;
+  
+  if (state.rows[rowIdx] && state.rows[rowIdx][type] && state.rows[rowIdx][type][idx]) {
+    state.rows[rowIdx][type][idx].note = formatted;
+  }
+  
+  validateNoteInput(e.target);
+  calcRow(rowIdx);
+  updateStats();
+}
+
+/* ============ NAVEGACIÓN CON TECLADO ============ */
+function handleInputKeydown(e, type, idx){
+  const tr = e.target.closest('tr');
+  const rowIdx = +tr.dataset.idx;
+  const tbody = document.getElementById('tbody');
+  const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+  const currentRowIndex = rows.findIndex(r => r === tr);
+  
+  // Obtener todos los inputs de la fila actual
+  const currentInputs = Array.from(tr.querySelectorAll('input[data-f]'));
+  const currentIndex = currentInputs.findIndex(inp => inp === e.target);
+  
+  switch(e.key){
+    case 'Enter':
+      e.preventDefault();
+      // Ir al siguiente input de la misma fila
+      if(currentIndex < currentInputs.length - 1){
+        currentInputs[currentIndex + 1].focus();
+        currentInputs[currentIndex + 1].select();
+      } else if(currentRowIndex < rows.length - 1){
+        // Si es el último de la fila, ir al primero de la siguiente
+        const nextRowInputs = rows[currentRowIndex + 1].querySelectorAll('input[data-f]');
+        if(nextRowInputs.length > 0){
+          nextRowInputs[1].focus();
+          nextRowInputs[1].select();
+        }
+      }
+      break;
+      
+    case 'ArrowRight':
+      e.preventDefault();
+      if(currentIndex < currentInputs.length - 1){
+        currentInputs[currentIndex + 1].focus();
+        currentInputs[currentIndex + 1].select();
+      }
+      break;
+      
+    case 'ArrowLeft':
+      e.preventDefault();
+      if(currentIndex > 0){
+        currentInputs[currentIndex - 1].focus();
+        currentInputs[currentIndex - 1].select();
+      }
+      break;
+      
+    case 'ArrowDown':
+      e.preventDefault();
+      if(currentRowIndex < rows.length - 1){
+        const nextRowInputs = rows[currentRowIndex + 1].querySelectorAll('input[data-f]');
+        // Buscar el input en la misma posición relativa (misma columna)
+        if(nextRowInputs[currentIndex]){
+          nextRowInputs[currentIndex].focus();
+          nextRowInputs[currentIndex].select();
+        }
+      }
+      break;
+      
+    case 'ArrowUp':
+      e.preventDefault();
+      if(currentRowIndex > 0){
+        const prevRowInputs = rows[currentRowIndex - 1].querySelectorAll('input[data-f]');
+        if(prevRowInputs[currentIndex]){
+          prevRowInputs[currentIndex].focus();
+          prevRowInputs[currentIndex].select();
+        }
+      }
+      break;
+  }
+}
+
+/* ============ INPUT NUMÉRICO INTELIGENTE ============ */
+function handleNumericInput(e, type, idx){
+    let value = e.target.value;
+    
+    // 1. Permitir solo dígitos y un punto decimal
+    value = value.replace(/[^0-9.]/g, '');
+    
+    // 2. Evitar múltiples puntos decimales (ej: "3.5.2" -> "3.52")
+    const parts = value.split('.');
+    if(parts.length > 2){
+        value = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    e.target.value = value;
+    
+    // 3. Actualizar estado temporalmente para que los cálculos en vivo no fallen
+    const tr = e.target.closest('tr');
+    const rowIdx = +tr.dataset.idx;
+    state.rows[rowIdx][type][idx].note = value;
+    
+    // 4. Recalcular (parseNum manejará "3." como 3, lo cual es aceptable mientras se escribe)
+    calcRow(rowIdx);
+    updateStats();
+}
+
+/* ============ EVENTOS ============ */
+$("btnDir").onclick = selectDirectory;
+$("btnConfig").onclick = ()=>{
+  if(!requireDir()) return;
+  $("cfgJornadas").value = state.config.jornadas.join(",");
+  $("cfgPondCog").value = state.config.ponderacion.cognitivo;
+  $("cfgPondSoc").value = state.config.ponderacion.social;
+  $("cfgPondPer").value = state.config.ponderacion.personal;
+  $("cfgMinNota").value = state.config.notaMinima;
+  $("cfgRangoMin").value = state.config.rango.min;
+  $("cfgRangoMax").value = state.config.rango.max;
+  buildConfigUI();
+  openModal("modalConfig");
+};
+$("btnBackups").onclick = showBackups;
+$("btnAudit").onclick = showAuditLog;
+$("btnNew").onclick = ()=>{
+  if(!requireDir()) return;
+  openModal("modalNew");
+};
+$("btnLoad").onclick = loadCSVFile;
+$("btnSave").onclick = saveCSV;
+$("btnUploadStudents").onclick = openUploadStudentsModal
+$("btnPrint").onclick = printTable;
+
+refreshPropSelects();
+generateEvalCodes();
+buildTable();
+
+logAction("Aplicación iniciada", "");
+
+/* ============ SERVICE WORKER ============ */
+if('serviceWorker' in navigator){
+  const swCode = `
+    const CACHE_NAME = 'gestor-calificaciones-v3';
+    const urlsToCache = ['/'];
+    
+    self.addEventListener('install', event => {
+      event.waitUntil(
+        caches.open(CACHE_NAME)
+          .then(cache => cache.addAll(urlsToCache))
+      );
+    });
+    
+    self.addEventListener('fetch', event => {
+      event.respondWith(
+        caches.match(event.request)
+          .then(response => response || fetch(event.request))
+      );
+    });
+  `;
+  
+  const blob = new Blob([swCode], {type: 'application/javascript'});
+  const swUrl = URL.createObjectURL(blob);
+  
+  navigator.serviceWorker.register(swUrl)
+    .then(reg => console.log('SW registrado'))
+    .catch(err => console.log('SW error:', err));
+}
+
+function updateTimestamp(){
+  const el = document.getElementById('statusTimestamp');
+  if(el) el.textContent = '🕐 ' + new Date().toLocaleString('es');
+}
+
+/* ============ INICIALIZACIÓN Y RECORDATORIO DE CARPETA ============ */
+const savedDir = localStorage.getItem('kynetra_last_dir') || state.config.lastDirName;
+
+if(savedDir && !state.dirHandle){
+    // Mostramos en la barra de estado que recordamos la carpeta (en color amarillo/warn)
+    updateStatusDir(`📁 Última: ${savedDir} (Clic en Directorio)`, "warn");
+    toast(`💡 Recuerda: Tu última carpeta fue "${savedDir}". Selecciónala para continuar.`, "info");
+} else if (!state.dirHandle) {
+    toast("Seleccione una carpeta para empezar a trabajar", "info");
+}
+
+updateTimestamp();
+setInterval(updateTimestamp, 60000);
+</script>
+</body>
+</html>
