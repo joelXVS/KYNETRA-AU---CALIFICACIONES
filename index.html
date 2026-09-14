@@ -547,8 +547,7 @@
   <img src="logo.png" class="print-watermark" alt="Marca de agua" style="display: none;">
 <header>
   <div style="display:flex; flex-direction:column; gap:6px; flex:1">
-    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px">
-      <button id="btnDir" class="icon-btn">📁 Directorio</button>
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px">
       <button id="btnConfig" class="icon-btn">⚙️ Ajustes</button>
       <button id="btnBackups" class="icon-btn">💾 Backups</button>
       <button id="btnAudit" class="icon-btn">📋 Auditoría</button>
@@ -833,7 +832,7 @@ Pedro Martínez Rodríguez
 <div class="sticky-status-bar">
   <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
     <span id="statusDir" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--panel); border:1px solid var(--border); border-radius:4px;">
-      <span style="color:var(--warn)">⚠️</span> Sin carpeta seleccionada
+      💾 Configuración local
     </span>
     <span id="statusFile" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--panel); border:1px solid var(--border); border-radius:4px;">
       📄 Sin archivo cargado
@@ -1044,8 +1043,6 @@ Pedro Martínez Rodríguez
 <script>
 /* ============ ESTADO GLOBAL ============ */
 const state = {
-  lastDirName: "",
-  dirHandle: null,
   config: {
     jornadas: [],
     grados: ["0","1","2","3","4","5","6","7","8","9","10","11"],
@@ -1058,11 +1055,60 @@ const state = {
   currentFile: null,
   currentProps: {jornada:"", grado:"", grupo:"", periodo:"1", asignatura:""},
   slots: {cog:3, soc:1, per:1},
-  evals: {cog:[], soc:[], per:[]}, // {code, name, date}
+  evals: {cog:[], soc:[], per:[]},
   rows: [],
   auditLog: [],
-  currentEvalEdit: null // {type, index}
+  currentEvalEdit: null
 };
+
+/* ============ CLAVES Y LÍMITES LOCALSTORAGE ============ */
+const LS_CONFIG   = 'kynetra_config';
+const LS_BACKUPS  = 'kynetra_backups';
+const LS_AUDIT    = 'kynetra_audit';
+const MAX_BACKUPS = 20;
+
+/* ============ PERSISTENCIA ============ */
+function persistConfig(){
+  try { localStorage.setItem(LS_CONFIG, JSON.stringify(state.config)); }
+  catch(e){ console.error(e); toast("No se pudo guardar la configuración","err"); }
+}
+function restoreConfig(){
+  try {
+    const txt = localStorage.getItem(LS_CONFIG);
+    if(txt){ state.config = {...state.config, ...JSON.parse(txt)}; return true; }
+  } catch(e){ console.error(e); }
+  return false;
+}
+function persistAudit(){
+  try { localStorage.setItem(LS_AUDIT, JSON.stringify(state.auditLog.slice(0,500))); } catch(e){}
+}
+function restoreAudit(){
+  try {
+    const txt = localStorage.getItem(LS_AUDIT);
+    if(txt) state.auditLog = JSON.parse(txt);
+  } catch(e){}
+}
+function getBackupsList(){
+  try { return JSON.parse(localStorage.getItem(LS_BACKUPS) || '[]'); } catch(e){ return []; }
+}
+function saveBackupsList(list){
+  try { localStorage.setItem(LS_BACKUPS, JSON.stringify(list)); }
+  catch(e){ toast("No se pudo guardar el backup","err"); }
+}
+
+/* ============ DESCARGA DE ARCHIVOS (PC + Android) ============ */
+function downloadTextFile(name, content, mime){
+  const blob = new Blob([content], {type:(mime||"text/plain") + ";charset=utf-8"});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
 
 /* ============ UTILIDADES ============ */
 const $ = id => document.getElementById(id);
@@ -1083,78 +1129,15 @@ function parseNum(s){
   const n = parseFloat(String(s).replace(",", "."));
   return isNaN(n) ? null : n;
 }
-
-/* ============ CAPA DE ABSTRACCIÓN DE ARCHIVOS (PC + Android) ============ */
-const isAndroid = /Android/i.test(navigator.userAgent) || !window.showDirectoryPicker;
-
-// Almacén virtual en memoria para Android
-state.virtualFiles = state.virtualFiles || {}; // { "nombre.csv": "contenido" }
-
-// Descarga nativa (WebToNative la captura como descarga real)
-function downloadFile(name, content){
-  const mime = name.endsWith(".json") ? "application/json" : "text/csv";
-  const blob = new Blob([content], { type: mime + ";charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-
-// Escribir
-async function fsWrite(name, content){
-  if(!isAndroid && state.dirHandle){
-    const fh = await state.dirHandle.getFileHandle(name, { create:true });
-    const w  = await fh.createWritable();
-    await w.write(content);
-    await w.close();
-  } else {
-    state.virtualFiles[name] = content;
-    downloadFile(name, content); // En Android: dispara la descarga
-  }
-}
-
-// Leer (devuelve string o null)
-async function fsRead(name){
-  if(!isAndroid && state.dirHandle){
-    try{
-      const fh = await state.dirHandle.getFileHandle(name);
-      const f  = await fh.getFile();
-      return await f.text();
-    }catch(e){ return null; }
-  }
-  return state.virtualFiles[name] ?? null;
-}
-
-// Listar nombres (filtrado por prefijo/sufijo opcional)
-async function fsList(filterFn){
-  const names = [];
-  if(!isAndroid && state.dirHandle){
-    for await (const [name] of state.dirHandle.entries()){
-      if(!filterFn || filterFn(name)) names.push(name);
-    }
-  } else {
-    for(const name of Object.keys(state.virtualFiles)){
-      if(!filterFn || filterFn(name)) names.push(name);
-    }
-  }
-  return names;
-}
+function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 
 /* ============ AUDITORÍA ============ */
 function logAction(action, details=""){
-  const entry = {
-    time: new Date().toLocaleString("es"),
-    action,
-    details
-  };
+  const entry = { time: new Date().toLocaleString("es"), action, details };
   state.auditLog.unshift(entry);
   if(state.auditLog.length > 500) state.auditLog.pop();
+  persistAudit();
 }
-
 function showAuditLog(){
   const log = $("auditLog");
   if(state.auditLog.length === 0){
@@ -1170,21 +1153,11 @@ function showAuditLog(){
   }
   openModal("modalAudit");
 }
-
 function clearAuditLog(){
   state.auditLog = [];
+  persistAudit();
   showAuditLog();
   toast("Registro limpiado");
-}
-
-/* ============ VALIDACIÓN DE CARPETA ============ */
-function requireDir(){
-  if(!state.dirHandle){
-    showAlert("Archivos requeridos",
-      "Primero selecciona tus archivos (config.json y/o CSV) desde '📁 Directorio'.");
-    return false;
-  }
-  return true;
 }
 
 /* ============ MODALES PERSONALIZADOS ============ */
@@ -1193,28 +1166,19 @@ function showConfirm(title, message){
     $("confirmTitle").textContent = title;
     $("confirmMessage").textContent = message;
     openModal("modalConfirm");
-    const ok = $("confirmOk");
-    const cancel = $("confirmCancel");
-    const cleanup = ()=>{
-      closeModal("modalConfirm");
-      ok.onclick = null;
-      cancel.onclick = null;
-    };
+    const ok = $("confirmOk"), cancel = $("confirmCancel");
+    const cleanup = ()=>{ closeModal("modalConfirm"); ok.onclick=null; cancel.onclick=null; };
     ok.onclick = ()=>{cleanup(); resolve(true)};
     cancel.onclick = ()=>{cleanup(); resolve(false)};
   });
 }
-
 function showAlert(title, message){
   return new Promise(resolve=>{
     $("alertTitle").textContent = title;
     $("alertMessage").textContent = message;
     openModal("modalAlert");
     const ok = $("alertOk");
-    const cleanup = ()=>{
-      closeModal("modalAlert");
-      ok.onclick = null;
-    };
+    const cleanup = ()=>{ closeModal("modalAlert"); ok.onclick=null; };
     ok.onclick = ()=>{cleanup(); resolve()};
   });
 }
@@ -1232,107 +1196,23 @@ document.querySelectorAll(".main-tab").forEach(tab=>{
 /* ============ STATUS BAR ============ */
 function updateStatusDir(text, type="default"){
   const el = $("statusDir");
+  if(!el) return;
   el.innerHTML = text;
-  el.style.borderColor = {
-    default: "var(--border)",
-    ok: "var(--ok)",
-    warn: "var(--warn)",
-    err: "var(--bad)"
-  }[type];
+  el.style.borderColor = {default:"var(--border)", ok:"var(--ok)", warn:"var(--warn)", err:"var(--bad)"}[type];
 }
-
 function updateStatusFile(text, type="default"){
   const el = $("statusFile");
+  if(!el) return;
   el.innerHTML = text;
-  el.style.borderColor = {
-    default: "var(--border)",
-    ok: "var(--ok)",
-    warn: "var(--warn)",
-    err: "var(--bad)"
-  }[type];
+  el.style.borderColor = {default:"var(--border)", ok:"var(--ok)", warn:"var(--warn)", err:"var(--bad)"}[type];
 }
 
-/* ============ FILE SYSTEM ============ */
-async function selectDirectory(){
-  try {
-    // ---------- PC ----------
-    if (!isAndroid && window.showDirectoryPicker) {
-      state.dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      state.config.lastDirName = state.dirHandle.name;
-      localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
-      updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
-      logAction("Carpeta seleccionada", state.dirHandle.name);
-      await loadConfig();
-      await scanCSVsForConfig();
-      refreshPropSelects();
-      toast("Carpeta seleccionada: " + state.dirHandle.name);
-      return;
-    }
-
-    // ---------- ANDROID ----------
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.accept = ".json,.csv,text/*";
-
-    input.onchange = async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-
-      // Cargar TODOS los archivos al almacén virtual
-      for (const f of files){
-        state.virtualFiles[f.name] = await f.text();
-      }
-
-      // "dirHandle" simulado para que el resto del código siga funcionando
-      state.dirHandle  = { name: `Android (${files.length} archivos)` };
-      state.lastDirName = state.dirHandle.name;
-      localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
-
-      updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
-
-      // Si vino config.json, cargarlo; si no, crearlo en memoria
-      const cfg = state.virtualFiles["config.json"];
-      if (cfg){
-        try { state.config = { ...state.config, ...JSON.parse(cfg) }; } catch(_){}
-      } else {
-        await saveConfigSilent();
-      }
-
-      await scanCSVsForConfig();
-      refreshPropSelects();
-
-      logAction("Archivos seleccionados (Android)", `${files.length} archivos`);
-      toast(`${files.length} archivo(s) cargado(s)`);
-    };
-
-    input.click();
-  } catch(e){
-    if (e.name !== "AbortError"){
-      console.error(e);
-      toast("Error al seleccionar los archivos", "err");
-    }
-  }
+/* ============ CONFIG (LOCALSTORAGE) ============ */
+function loadConfig(){
+  if(restoreConfig()){ logAction("Configuración cargada", "localStorage"); }
+  else { persistConfig(); }
 }
-
-async function loadConfig(){
-  const txt = await fsRead("config.json");
-  if (txt){
-    try {
-      state.config = { ...state.config, ...JSON.parse(txt) };
-      if(state.config.lastDirName && !localStorage.getItem('kynetra_last_dir')){
-        localStorage.setItem('kynetra_last_dir', state.config.lastDirName);
-      }
-      logAction("Configuración cargada", "config.json");
-    }catch(_){}
-  } else {
-    await saveConfigSilent();
-  }
-}
-
-async function saveConfig(){
-  if(!state.dirHandle){toast("Selecciona una carpeta primero","err"); return}
-  
+function saveConfig(){
   state.config.jornadas = $("cfgJornadas").value.split(",").map(s=>s.trim()).filter(Boolean);
   state.config.ponderacion.cognitivo = +$("cfgPondCog").value || 60;
   state.config.ponderacion.social = +$("cfgPondSoc").value || 20;
@@ -1340,13 +1220,11 @@ async function saveConfig(){
   state.config.notaMinima = +$("cfgMinNota").value || 3.0;
   state.config.rango.min = +$("cfgRangoMin").value || 1.0;
   state.config.rango.max = +$("cfgRangoMax").value || 5.0;
-  
+
   const gradosSel = [];
-  document.querySelectorAll("#gradosCheckboxes input:checked").forEach(cb=>{
-    gradosSel.push(cb.value);
-  });
+  document.querySelectorAll("#gradosCheckboxes input:checked").forEach(cb=>gradosSel.push(cb.value));
   state.config.grados = gradosSel.sort((a,b)=>+a-+b);
-  
+
   const grupos = {};
   document.querySelectorAll(".grupo-editor").forEach(editor=>{
     const grado = editor.dataset.grado;
@@ -1354,31 +1232,14 @@ async function saveConfig(){
     grupos[grado] = Array.from(tags).map(t=>t.dataset.grupo);
   });
   state.config.grupos = grupos;
-  
-  await fsWrite("config.json", JSON.stringify(state.config, null, 2));
+
+  persistConfig();
   logAction("Configuración guardada", `${gradosSel.length} grados, ${Object.keys(grupos).length} grupos`);
   refreshPropSelects();
   closeModal("modalConfig");
   toast("Ajustes guardados");
 }
-
-async function saveConfigSilent(){
-  await fsWrite("config.json", JSON.stringify(state.config, null, 2));
-}
-
-async function scanCSVsForConfig(){
-  const csvs = await fsList(n => n.endsWith(".csv"));
-  for (const name of csvs){
-    const parts = name.replace(".csv","").split("_");
-    if(parts.length >= 5){
-      const [asig, grado, grupo] = parts;
-      const key = grado + "-" + grupo;
-      if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
-      if(!state.config.asignaturas[key].includes(asig))
-        state.config.asignaturas[key].push(asig);
-    }
-  }
-}
+function saveConfigSilent(){ persistConfig(); }
 
 /* ============ CONFIG INTUITIVO ============ */
 function buildConfigUI(){
@@ -1390,7 +1251,7 @@ function buildConfigUI(){
       document.querySelector(`[data-section="${tab.dataset.tab}"]`).classList.add("active");
     };
   });
-  
+
   const allGrados = ["0","1","2","3","4","5","6","7","8","9","10","11"];
   $("gradosCheckboxes").innerHTML = allGrados.map(g=>`
     <div class="checkbox-item">
@@ -1398,19 +1259,17 @@ function buildConfigUI(){
       <label for="grado${g}">${g}°</label>
     </div>
   `).join("");
-  
+
   document.querySelectorAll("#gradosCheckboxes input").forEach(cb=>{
     cb.onchange = buildGruposUI;
   });
-  
+
   buildGruposUI();
   buildAsignaturasUI();
 }
-
 function buildGruposUI(){
   const container = $("gruposContainer");
   const selectedGrados = Array.from(document.querySelectorAll("#gradosCheckboxes input:checked")).map(cb=>cb.value);
-  
   container.innerHTML = selectedGrados.map(grado=>{
     const grupos = state.config.grupos[grado] || [];
     return `
@@ -1432,13 +1291,11 @@ function buildGruposUI(){
     `;
   }).join("");
 }
-
 function addGrupo(grado){
   const input = $(`newGrupo${grado}`);
   const textoLimpio = input.value.trim();
   const grupo = textoLimpio.charAt(0).toUpperCase() + textoLimpio.slice(1);
   if(!grupo) return;
-  
   if(!state.config.grupos[grado]) state.config.grupos[grado] = [];
   if(!state.config.grupos[grado].includes(grupo)){
     state.config.grupos[grado].push(grupo);
@@ -1447,32 +1304,21 @@ function addGrupo(grado){
   }
   input.value = "";
 }
-
 function removeGrupo(grado, grupo){
   state.config.grupos[grado] = state.config.grupos[grado].filter(g=>g!==grupo);
   buildGruposUI();
   buildAsignaturasUI();
 }
-
 function buildAsignaturasUI(){
   const selector = $("asigSelector");
   const options = [];
   Object.keys(state.config.grupos).forEach(grado=>{
-    state.config.grupos[grado].forEach(grupo=>{
-      options.push(`${grado}-${grupo}`);
-    });
+    state.config.grupos[grado].forEach(grupo=>{ options.push(`${grado}-${grupo}`); });
   });
-  
-  selector.innerHTML = '<option value="">-- Seleccionar --</option>' + 
-    options.map(o=>`<option>${o}</option>`).join("");
-  
+  selector.innerHTML = '<option value="">-- Seleccionar --</option>' + options.map(o=>`<option>${o}</option>`).join("");
   selector.onchange = ()=>{
     const key = selector.value;
-    if(!key){
-      $("asignaturasContainer").innerHTML = "";
-      return;
-    }
-    
+    if(!key){ $("asignaturasContainer").innerHTML = ""; return; }
     const asigs = state.config.asignaturas[key] || [];
     $("asignaturasContainer").innerHTML = `
       <div class="asignatura-editor">
@@ -1493,12 +1339,10 @@ function buildAsignaturasUI(){
     `;
   };
 }
-
 function addAsignatura(key){
   const input = $(`newAsig${key.replace('-','_')}`);
   const asig = input.value.trim();
   if(!asig) return;
-  
   if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
   if(!state.config.asignaturas[key].includes(asig)){
     state.config.asignaturas[key].push(asig);
@@ -1508,7 +1352,6 @@ function addAsignatura(key){
   }
   input.value = "";
 }
-
 function removeAsignatura(key, asig){
   state.config.asignaturas[key] = state.config.asignaturas[key].filter(a=>a!==asig);
   buildAsignaturasUI();
@@ -1526,12 +1369,7 @@ function refreshPropSelects(){
 function fillSelect(id, items, selected){
   const sel = $(id);
   const values = Array.isArray(items) ? [...items] : [];
-  // Al cargar un CSV, la propiedad debe poder mostrarse aunque todavía
-  // no exista en config.json. Esto evita que refreshPropSelects() borre
-  // grupo/asignatura por no encontrarlos en la configuración local.
-  if(selected && !values.some(v => String(v) === String(selected))){
-    values.unshift(selected);
-  }
+  if(selected && !values.some(v => String(v) === String(selected))) values.unshift(selected);
   sel.innerHTML = '<option value="">--</option>' + values.map(i=>`<option value="${escapeHtml(i)}" ${String(i)===String(selected)?"selected":""}>${escapeHtml(i)}</option>`).join("");
   if(selected) sel.value = String(selected);
 }
@@ -1547,7 +1385,6 @@ function updateAsignaturas(){
   const asigs = state.config.asignaturas[key] || [];
   fillSelect("propAsignatura", asigs, state.currentProps.asignatura);
 }
-
 ["propGrado","propGrupo"].forEach(id=>{
   $(id).addEventListener("change", ()=>{
     if(id==="propGrado") updateGrupos();
@@ -1558,7 +1395,6 @@ function updateAsignaturas(){
 ["propJornada","propPeriodo","propAsignatura"].forEach(id=>{
   $(id).addEventListener("change", updateFileNamePreview);
 });
-
 function updateFileNamePreview(){
   state.currentProps.jornada = $("propJornada").value;
   state.currentProps.grado = $("propGrado").value;
@@ -1568,7 +1404,6 @@ function updateFileNamePreview(){
   const name = buildFileName();
   $("fileNamePreview").textContent = name ? "📄 " + name : "Completa todas las propiedades";
 }
-
 function buildFileName(){
   const p = state.currentProps;
   if(!p.asignatura||!p.grado||!p.grupo||!p.periodo||!p.jornada) return "";
@@ -1579,52 +1414,21 @@ function buildFileName(){
 function validateNoteInput(input){
   const val = parseNum(input.value);
   const {min, max} = state.config.rango;
-  
-  if(input.value === ""){
-    input.classList.remove("invalid","warning","valid");
-    return true;
-  }
-  
-  if(val === null){
-    input.classList.add("invalid");
-    input.classList.remove("warning","valid");
-    return false;
-  }
-  
-  if(val < min || val > max){
-    input.classList.add("invalid");
-    input.classList.remove("warning","valid");
-    return false;
-  }
-  
-  if(val < state.config.notaMinima){
-    input.classList.add("warning");
-    input.classList.remove("invalid","valid");
-  } else {
-    input.classList.add("valid");
-    input.classList.remove("invalid","warning");
-  }
-  
+  if(input.value === ""){ input.classList.remove("invalid","warning","valid"); return true; }
+  if(val === null){ input.classList.add("invalid"); input.classList.remove("warning","valid"); return false; }
+  if(val < min || val > max){ input.classList.add("invalid"); input.classList.remove("warning","valid"); return false; }
+  if(val < state.config.notaMinima){ input.classList.add("warning"); input.classList.remove("invalid","valid"); }
+  else { input.classList.add("valid"); input.classList.remove("invalid","warning"); }
   return true;
 }
 
 /* ============ EVALUACIONES ============ */
 function generateEvalCodes(){
-  state.evals.cog = [];
-  state.evals.soc = [];
-  state.evals.per = [];
-  
-  for(let i=0;i<state.slots.cog;i++){
-    state.evals.cog.push({code:`C${i+1}`, name:"", date:""});
-  }
-  for(let i=0;i<state.slots.soc;i++){
-    state.evals.soc.push({code:`S${i+1}`, name:"", date:""});
-  }
-  for(let i=0;i<state.slots.per;i++){
-    state.evals.per.push({code:`P${i+1}`, name:"", date:""});
-  }
+  state.evals.cog = []; state.evals.soc = []; state.evals.per = [];
+  for(let i=0;i<state.slots.cog;i++) state.evals.cog.push({code:`C${i+1}`, name:"", date:""});
+  for(let i=0;i<state.slots.soc;i++) state.evals.soc.push({code:`S${i+1}`, name:"", date:""});
+  for(let i=0;i<state.slots.per;i++) state.evals.per.push({code:`P${i+1}`, name:"", date:""});
 }
-
 function editEval(type, index){
   state.currentEvalEdit = {type, index};
   const eval_ = state.evals[type][index];
@@ -1633,7 +1437,6 @@ function editEval(type, index){
   $("evalDate").value = eval_.date;
   openModal("modalEval");
 }
-
 function saveEval(){
   const {type, index} = state.currentEvalEdit;
   state.evals[type][index].name = $("evalName").value.trim();
@@ -1647,82 +1450,34 @@ function saveEval(){
 /* ============ ESTADÍSTICAS ============ */
 function updateStats(){
   if(state.rows.length === 0){
-    $("statTotal").textContent = "0";
+    ["statTotal","statSinNotas","statCeldasVac","statFueraRango","dist1","dist2","dist3","dist4"].forEach(id=>$(id).textContent="0");
     $("statAprob").textContent = "0 (0%)";
     $("statReprob").textContent = "0 (0%)";
     $("statProm").textContent = "0.00";
-    $("statMax").textContent = "-";
-    $("statMin").textContent = "-";
-    $("statSinNotas").textContent = "0";
-    $("statCeldasVac").textContent = "0";
-    $("statFueraRango").textContent = "0";
-    $("dist1").textContent = "0";
-    $("dist2").textContent = "0";
-    $("dist3").textContent = "0";
-    $("dist4").textContent = "0";
+    $("statMax").textContent = "-"; $("statMin").textContent = "-";
     $("top10Best").innerHTML = '<p style="color:var(--muted); text-align:center">Sin datos</p>';
     $("top10Worst").innerHTML = '<p style="color:var(--muted); text-align:center">Sin datos</p>';
     return;
   }
-  
   const pond = state.config.ponderacion;
-  const stats = {
-    total: state.rows.length,
-    aprob: 0,
-    reprob: 0,
-    sumDef: 0,
-    maxDef: -Infinity,
-    minDef: Infinity,
-    sinNotas: 0,
-    celdasVac: 0,
-    fueraRango: 0,
-    dist: [0,0,0,0],
-    students: []
-  };
-  
+  const stats = { total:state.rows.length, aprob:0, reprob:0, sumDef:0, maxDef:-Infinity, minDef:Infinity, sinNotas:0, celdasVac:0, fueraRango:0, dist:[0,0,0,0], students:[] };
   state.rows.forEach(row=>{
-    const cogVals = row.cog.map(c=>{
-      const n = parseNum(c.note);
-      if(c.note === "") stats.celdasVac++;
-      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
-      return n===null ? 1.0 : n;
-    });
+    const cogVals = row.cog.map(c=>{ const n = parseNum(c.note); if(c.note==="") stats.celdasVac++; if(n!==null && (n<state.config.rango.min||n>state.config.rango.max)) stats.fueraRango++; return n===null?1.0:n; });
     const defCog = cogVals.reduce((a,b)=>a+b,0)/cogVals.length;
-    
-    const socVals = row.soc.map(c=>{
-      const n = parseNum(c.note);
-      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
-      return n;
-    }).filter(n=>n!==null);
+    const socVals = row.soc.map(c=>{ const n = parseNum(c.note); if(n!==null && (n<state.config.rango.min||n>state.config.rango.max)) stats.fueraRango++; return n; }).filter(n=>n!==null);
     const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
-    
-    const perVals = row.per.map(c=>{
-      const n = parseNum(c.note);
-      if(n !== null && (n < state.config.rango.min || n > state.config.rango.max)) stats.fueraRango++;
-      return n;
-    }).filter(n=>n!==null);
+    const perVals = row.per.map(c=>{ const n = parseNum(c.note); if(n!==null && (n<state.config.rango.min||n>state.config.rango.max)) stats.fueraRango++; return n; }).filter(n=>n!==null);
     const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
-    
     const def = defCog*pond.cognitivo/100 + defSoc*pond.social/100 + defPer*pond.personal/100;
-    
     const allNotes = [...row.cog.map(c=>c.note), ...row.soc.map(c=>c.note), ...row.per.map(c=>c.note)];
     if(allNotes.every(n=>n==="")) stats.sinNotas++;
-    
     stats.sumDef += def;
     if(def > stats.maxDef) stats.maxDef = def;
     if(def < stats.minDef) stats.minDef = def;
-    
-    if(def >= state.config.notaMinima) stats.aprob++;
-    else stats.reprob++;
-    
-    if(def < 2.0) stats.dist[0]++;
-    else if(def < 3.0) stats.dist[1]++;
-    else if(def < 4.0) stats.dist[2]++;
-    else stats.dist[3]++;
-    
+    if(def >= state.config.notaMinima) stats.aprob++; else stats.reprob++;
+    if(def < 2.0) stats.dist[0]++; else if(def < 3.0) stats.dist[1]++; else if(def < 4.0) stats.dist[2]++; else stats.dist[3]++;
     stats.students.push({name:row.name, def});
   });
-  
   $("statTotal").textContent = stats.total;
   $("statAprob").textContent = `${stats.aprob} (${(stats.aprob/stats.total*100).toFixed(1)}%)`;
   $("statReprob").textContent = `${stats.reprob} (${(stats.reprob/stats.total*100).toFixed(1)}%)`;
@@ -1736,26 +1491,11 @@ function updateStats(){
   $("dist2").textContent = stats.dist[1];
   $("dist3").textContent = stats.dist[2];
   $("dist4").textContent = stats.dist[3];
-  
   const sorted = stats.students.filter(s=>s.name).sort((a,b)=>b.def-a.def);
   const top10Best = sorted.slice(0,10);
   const top10Worst = sorted.slice(-10).reverse();
-  
-  $("top10Best").innerHTML = top10Best.length ? top10Best.map((s,i)=>`
-    <div class="top-item">
-      <span class="rank">${i+1}.</span>
-      <span class="name">${s.name}</span>
-      <span class="score">${s.def.toFixed(2)}</span>
-    </div>
-  `).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
-  
-  $("top10Worst").innerHTML = top10Worst.length ? top10Worst.map((s,i)=>`
-    <div class="top-item">
-      <span class="rank">${i+1}.</span>
-      <span class="name">${s.name}</span>
-      <span class="score">${s.def.toFixed(2)}</span>
-    </div>
-  `).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+  $("top10Best").innerHTML = top10Best.length ? top10Best.map((s,i)=>`<div class="top-item"><span class="rank">${i+1}.</span><span class="name">${escapeHtml(s.name)}</span><span class="score">${s.def.toFixed(2)}</span></div>`).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
+  $("top10Worst").innerHTML = top10Worst.length ? top10Worst.map((s,i)=>`<div class="top-item"><span class="rank">${i+1}.</span><span class="name">${escapeHtml(s.name)}</span><span class="score">${s.def.toFixed(2)}</span></div>`).join("") : '<p style="color:var(--muted); text-align:center">Sin datos</p>';
 }
 
 /* ============ TABLA ============ */
@@ -1768,10 +1508,7 @@ function buildTable(){
   html += "<tr>";
   html += `<th id="name-col" rowspan="2">APELLIDOS Y NOMBRES</th>`;
   html += `<th colspan="${cog}">DESEMPEÑO COGNITIVO (${pond.cognitivo}%)
-    <div class="slot-controls">
-      <button onclick="changeCogSlots(-1)">-</button>
-      <button onclick="changeCogSlots(1)">+</button>
-    </div>
+    <div class="slot-controls"><button onclick="changeCogSlots(-1)">-</button><button onclick="changeCogSlots(1)">+</button></div>
   </th>`;
   html += `<th rowspan="2">DEF. COG</th><th rowspan="2">APORTE</th>`;
   html += `<th colspan="${soc}">DESEMPEÑO SOCIAL (${pond.social}%)</th>`;
@@ -1781,100 +1518,52 @@ function buildTable(){
   html += `<th rowspan="2">DEFINITIVA<br>PERIODO</th>`;
   html += `<th rowspan="2">ESTADO</th>`;
   html += `<th id="actions-col" rowspan="2">⚙️ Acciones</th>`;
-  html += "</tr>";
-
-  html += "<tr>";
-  for(let i=0;i<cog;i++){
-    const ev = state.evals.cog[i];
-    html += `<th><div class="eval-code" onclick="editEval('cog',${i})" oncontextmenu="showEvalContextMenu(event,'cog',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
-  }
-  for(let i=0;i<soc;i++){
-    const ev = state.evals.soc[i];
-    html += `<th><div class="eval-code" onclick="editEval('soc',${i})" oncontextmenu="showEvalContextMenu(event,'soc',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
-  }
-  for(let i=0;i<per;i++){
-    const ev = state.evals.per[i];
-    html += `<th><div class="eval-code" onclick="editEval('per',${i})" oncontextmenu="showEvalContextMenu(event,'per',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`;
-  }
-  html += "</tr></thead>";
-
-  html += `<tbody id="tbody"></tbody>`;
+  html += "</tr><tr>";
+  for(let i=0;i<cog;i++){ const ev = state.evals.cog[i]; html += `<th><div class="eval-code" onclick="editEval('cog',${i})" oncontextmenu="showEvalContextMenu(event,'cog',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`; }
+  for(let i=0;i<soc;i++){ const ev = state.evals.soc[i]; html += `<th><div class="eval-code" onclick="editEval('soc',${i})" oncontextmenu="showEvalContextMenu(event,'soc',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`; }
+  for(let i=0;i<per;i++){ const ev = state.evals.per[i]; html += `<th><div class="eval-code" onclick="editEval('per',${i})" oncontextmenu="showEvalContextMenu(event,'per',${i}); return false;">${ev.code}</div><div class="eval-info">${escapeHtml(ev.name||"")} ${ev.date ? "· "+escapeHtml(ev.date) : ""}</div></th>`; }
+  html += "</tr></thead><tbody id=\"tbody\"></tbody>";
   t.innerHTML = html;
-
   renderRows();
 }
-
 function renderRows(){
   const tbody = $("tbody");
   if(!tbody) return;
   const {cog, soc, per} = state.slots;
   let html = "";
-  
   state.rows.forEach((row, idx)=>{
     html += `<tr data-idx="${idx}">`;
-    
-    // Columna de Nombre
-    html += `<td><input id="name-input" data-f="name" value="${escapeHtml(row.name.toUpperCase())}" oninput="state.rows[${idx}].name = this.value"></td>`;
-    
-        // Desempeño Cognitivo
-    for(let i=0; i<cog; i++){
-      const n = row.cog[i] || {note:""};
-      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="cog" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'cog',${i},this.value); return false;" onblur="handleInputBlur(event,'cog',${i})" onkeydown="handleInputKeydown(event,'cog',${i})" oninput="handleNumericInput(event,'cog',${i})"></td>`;
-    }
+    html += `<td><input id="name-input" data-f="name" value="${escapeHtml((row.name||"").toUpperCase())}" oninput="state.rows[${idx}].name = this.value"></td>`;
+    for(let i=0;i<cog;i++){ const n = row.cog[i] || {note:""}; html += `<td><input type="text" inputmode="decimal" data-f="cog" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'cog',${i},this.value); return false;" onblur="handleInputBlur(event,'cog',${i})" onkeydown="handleInputKeydown(event,'cog',${i})" oninput="handleNumericInput(event,'cog',${i})"></td>`; }
     html += `<td class="def-cell" data-c="defCog"></td><td class="def-cell" data-c="apCog"></td>`;
-    
-    // Desempeño Social
-    for(let i=0; i<soc; i++){
-      const n = row.soc[i] || {note:""};
-      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="soc" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'soc',${i},this.value); return false;" onblur="handleInputBlur(event,'soc',${i})" onkeydown="handleInputKeydown(event,'soc',${i})" oninput="handleNumericInput(event,'soc',${i})"></td>`;
-    }
+    for(let i=0;i<soc;i++){ const n = row.soc[i] || {note:""}; html += `<td><input type="text" inputmode="decimal" data-f="soc" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'soc',${i},this.value); return false;" onblur="handleInputBlur(event,'soc',${i})" onkeydown="handleInputKeydown(event,'soc',${i})" oninput="handleNumericInput(event,'soc',${i})"></td>`; }
     html += `<td class="def-cell" data-c="defSoc"></td><td class="def-cell" data-c="apSoc"></td>`;
-    
-    // Desempeño Personal
-    for(let i=0; i<per; i++){
-      const n = row.per[i] || {note:""};
-      html += `<td><input type="text" inputmode="decimal" pattern="[0-9.]*" data-f="per" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'per',${i},this.value); return false;" onblur="handleInputBlur(event,'per',${i})" onkeydown="handleInputKeydown(event,'per',${i})" oninput="handleNumericInput(event,'per',${i})"></td>`;
-    }
+    for(let i=0;i<per;i++){ const n = row.per[i] || {note:""}; html += `<td><input type="text" inputmode="decimal" data-f="per" data-i="${i}" value="${n.note}" oncontextmenu="showInputContextMenu(event,'per',${i},this.value); return false;" onblur="handleInputBlur(event,'per',${i})" onkeydown="handleInputKeydown(event,'per',${i})" oninput="handleNumericInput(event,'per',${i})"></td>`; }
     html += `<td class="def-cell" data-c="defPer"></td><td class="def-cell" data-c="apPer"></td>`;
-    
-    // Columnas finales
-    html += `<td class="def-cell" data-c="def"></td>`;
-    html += `<td class="def-cell" data-c="estado"></td>`;
+    html += `<td class="def-cell" data-c="def"></td><td class="def-cell" data-c="estado"></td>`;
     html += `<td id="actions-td"><div class="row-actions"><button class="btn-add" onclick="addRow(${idx})">➕</button><button class="btn-del" onclick="delRow(${idx})">🗑️</button></div></td>`;
     html += "</tr>";
   });
-  
   tbody.innerHTML = html;
-
-  // Recalcular todo al renderizar
   state.rows.forEach((_,i)=>calcRow(i));
   updateStats();
 }
-
 function calcRow(idx){
   const row = state.rows[idx];
   const tr = document.querySelector(`tr[data-idx="${idx}"]`);
   if(!tr) return;
   const pond = state.config.ponderacion;
-
-  const cogVals = row.cog.map(c=>{
-    const n = parseNum(c.note);
-    return n===null ? 1.0 : n;
-  });
+  const cogVals = row.cog.map(c=>{const n=parseNum(c.note); return n===null?1.0:n;});
   const defCog = cogVals.length ? cogVals.reduce((a,b)=>a+b,0)/cogVals.length : 0;
   const apCog = defCog * pond.cognitivo/100;
-
   const socVals = row.soc.map(c=>parseNum(c.note)).filter(n=>n!==null);
   const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
   const apSoc = defSoc * pond.social/100;
-
   const perVals = row.per.map(c=>parseNum(c.note)).filter(n=>n!==null);
   const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
   const apPer = defPer * pond.personal/100;
-
   const def = apCog + apSoc + apPer;
   const estado = def >= state.config.notaMinima ? "Aprobado" : "Reprobado";
-
   tr.querySelector('[data-c="defCog"]').textContent = fmtNum(defCog);
   tr.querySelector('[data-c="apCog"]').textContent = fmtNum(apCog);
   tr.querySelector('[data-c="defSoc"]').textContent = fmtNum(defSoc);
@@ -1886,45 +1575,27 @@ function calcRow(idx){
   est.textContent = estado;
   est.className = "def-cell " + (estado==="Aprobado"?"estado-aprobado":"estado-reprobado");
 }
-
 async function changeCogSlots(delta){
   const newSlots = state.slots.cog + delta;
-  if(newSlots < 1 || newSlots > 8){
-    await showAlert("Límite alcanzado", "El desempeño cognitivo admite entre 1 y 8 casillas de notas.");
-    return;
-  }
-  
+  if(newSlots < 1 || newSlots > 8){ await showAlert("Límite alcanzado", "El desempeño cognitivo admite entre 1 y 8 casillas."); return; }
   if(delta < 0 && state.rows.some(r=>r.cog[newSlots]?.note)){
     const ok = await showConfirm("Eliminar columna", "Hay notas en la columna que se eliminará. ¿Continuar?");
     if(!ok) return;
   }
-  
   state.slots.cog = newSlots;
-  if(delta > 0){
-    state.evals.cog.push({code:`C${newSlots}`, name:"", date:""});
-    state.rows.forEach(r=>r.cog.push({note:""}));
-  } else {
-    state.evals.cog.pop();
-    state.rows.forEach(r=>r.cog.pop());
-  }
+  if(delta > 0){ state.evals.cog.push({code:`C${newSlots}`, name:"", date:""}); state.rows.forEach(r=>r.cog.push({note:""})); }
+  else { state.evals.cog.pop(); state.rows.forEach(r=>r.cog.pop()); }
   logAction("Casillas cognitivo cambiadas", `${state.slots.cog} casillas`);
   buildTable();
   toast(`Casillas cognitivo: ${newSlots}`);
 }
-
 function addRow(afterIdx){
   const {cog, soc, per} = state.slots;
-  const newRow = {
-    name:"",
-    cog: Array.from({length:cog},()=>({note:""})),
-    soc: Array.from({length:soc},()=>({note:""})),
-    per: Array.from({length:per},()=>({note:""}))
-  };
+  const newRow = { name:"", cog:Array.from({length:cog},()=>({note:""})), soc:Array.from({length:soc},()=>({note:""})), per:Array.from({length:per},()=>({note:""})) };
   state.rows.splice(afterIdx+1, 0, newRow);
   renderRows();
   logAction("Estudiante agregado", `Fila ${afterIdx+2}`);
 }
-
 async function delRow(idx){
   const ok = await showConfirm("Eliminar estudiante", "¿Eliminar este estudiante?");
   if(!ok) return;
@@ -1934,12 +1605,9 @@ async function delRow(idx){
   logAction("Estudiante eliminado", name);
 }
 
-function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-
 /* ============ CSV I/O ============ */
 function parseCSV(text){
-  const rows = [];
-  let cur = [], field = "", inQ = false;
+  const rows = []; let cur = [], field = "", inQ = false;
   for(let i=0;i<text.length;i++){
     const c = text[i];
     if(inQ){
@@ -1957,7 +1625,6 @@ function parseCSV(text){
   if(field||cur.length){cur.push(field); rows.push(cur)}
   return rows.filter(r=>r.some(c=>c!==""));
 }
-
 function toCSV(rows){
   return rows.map(r=>r.map(c=>{
     const s = String(c??"");
@@ -1965,62 +1632,43 @@ function toCSV(rows){
   }).join(",")).join("\n");
 }
 
+/* CARGAR CSV (sin requireDir) */
 async function loadCSVFile(){
-  if(!requireDir()) return;
   const input = document.createElement("input");
-  input.type="file";
-  input.accept=".csv";
-
+  input.type="file"; input.accept=".csv";
   input.onchange = async e=>{
     const file = e.target.files[0];
     if(!file) return;
-
     try{
       const text = await file.text();
       const rows = parseCSV(text);
-      if(rows.length < 2){
-        toast("CSV vacío o inválido","err");
-        return;
-      }
+      if(rows.length < 2){ toast("CSV vacío o inválido","err"); return; }
 
       const headerRow = rows[0] || [];
       const metaRow = rows[1] || [];
-
-      // Detectar la estructura por las columnas de cierre.
       const defCogIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF COG");
       const defSocIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF SOC");
       const defPerIdx = headerRow.findIndex(h => normalizeHeader(h) === "DEF PER");
-
       if(defCogIdx <= 0 || defSocIdx <= defCogIdx || defPerIdx <= defSocIdx){
-        toast("No se pudo detectar la estructura de desempeños del CSV","err");
-        logAction("Error cargando CSV", "Faltan DEF. COG, DEF. SOC o DEF. PER.");
-        return;
+        toast("No se pudo detectar la estructura del CSV","err"); return;
       }
-
       const cogStart = 1;
-      const socStart = defCogIdx + 2; // DEF + APORTE
-      const perStart = defSocIdx + 2; // DEF + APORTE
+      const socStart = defCogIdx + 2;
+      const perStart = defSocIdx + 2;
       const cogSlots = defCogIdx - cogStart;
       const socSlots = defSocIdx - socStart;
       const perSlots = defPerIdx - perStart;
-
-      if(cogSlots < 1 || socSlots < 1 || perSlots < 1){
-        toast("La estructura del CSV no contiene columnas válidas de desempeño","err");
-        return;
-      }
+      if(cogSlots < 1 || socSlots < 1 || perSlots < 1){ toast("Estructura inválida","err"); return; }
 
       state.slots = {cog:cogSlots, soc:socSlots, per:perSlots};
       generateEvalCodes();
 
-      // Recuperar nombre, criterio/código y fecha de cada columna.
       const loadEvalMeta = (type, startCol, count)=>{
         for(let i=0;i<count;i++){
           const ev = state.evals[type][i];
           const rawName = (headerRow[startCol+i] || "").trim();
           const rawMeta = (metaRow[startCol+i] || "").trim();
-
           ev.name = rawName && !/^EVALUACI[ÓO]N\s+\d+$/i.test(rawName) ? rawName : "";
-
           if(rawMeta.includes("|")){
             const [criterion, date] = rawMeta.split("|");
             ev.code = criterion.trim() || ev.code;
@@ -2036,182 +1684,123 @@ async function loadCSVFile(){
           }
         }
       };
-
       loadEvalMeta("cog", cogStart, cogSlots);
       loadEvalMeta("soc", socStart, socSlots);
       loadEvalMeta("per", perStart, perSlots);
 
-      // Propiedades desde el nombre:
-      // Historia_6-SEXTO 1_P1_Mañana.csv -> Historia / 6 / SEXTO 1 / 1 / Mañana
       const baseName = file.name.replace(/\.csv$/i,"");
       const parts = baseName.split("_");
-
       state.currentProps = {jornada:"", grado:"", grupo:"", periodo:"", asignatura:""};
-
-      state.currentProps.asignatura = parts[0].trim();
-
-      const grado = parts[1].split("-")[0];
-      console.log("Grado detectado:", grado);
-      const grupo = parts[1].split("-")[1];
-      console.log("Grupo detectado:", grupo);
-
-      state.currentProps.grado = grado;
-      state.currentProps.grupo = grupo;
-
+      state.currentProps.asignatura = (parts[0]||"").trim();
+      const gg = (parts[1]||"-").split("-");
+      state.currentProps.grado = (gg[0]||"").trim();
+      state.currentProps.grupo = (gg[1]||"").trim();
       state.currentProps.periodo = (parts[2] || "").replace(/[^0-9]/g,"") || "1";
       state.currentProps.jornada = parts.slice(3).join("_").trim();
-
       state.currentFile = file.name;
 
       refreshPropSelects();
       $("propPeriodo").value = String(state.currentProps.periodo || "1");
-      if($("propPeriodo").value !== String(state.currentProps.periodo || "1")){
-
-        const opt = document.createElement("option");
-        opt.value = String(state.currentProps.periodo || "1");
-        opt.textContent = String(state.currentProps.periodo || "1");
-        $("propPeriodo").appendChild(opt);
-        $("propPeriodo").value = String(state.currentProps.periodo || "1");
-      }
       updateFileNamePreview();
 
       state.rows = [];
-
-      // Las dos primeras filas son encabezado y metadata.
       for(let r=2;r<rows.length;r++){
         const row = rows[r] || [];
         if(!row[0] || row[0].trim() === "") continue;
-
         const student = {name:row[0].trim(), cog:[], soc:[], per:[]};
-
         for(let i=0;i<cogSlots;i++) student.cog.push({note:row[cogStart+i] || ""});
         for(let i=0;i<socSlots;i++) student.soc.push({note:row[socStart+i] || ""});
         for(let i=0;i<perSlots;i++) student.per.push({note:row[perStart+i] || ""});
-
         state.rows.push(student);
       }
-
       buildTable();
-
-      $("statusFile").textContent = "📄 " + file.name;
-      logAction("CSV cargado", `${file.name} - ${state.rows.length} estudiantes - ${cogSlots}/${socSlots}/${perSlots} columnas`);
-      toast("CSV cargado correctamente: " + state.rows.length + " estudiantes");
-
+      updateStatusFile("📄 " + file.name, "ok");
+      logAction("CSV cargado", `${file.name} - ${state.rows.length} estudiantes`);
+      toast("CSV cargado: " + state.rows.length + " estudiantes");
     }catch(err){
       console.error(err);
       toast("Error al cargar CSV: " + err.message, "err");
-      logAction("Error cargando CSV", err.message);
     }
   };
-
   input.click();
 }
-
 function normalizeHeader(value){
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g,"")
-    .toUpperCase()
-    .replace(/\s+/g," ")
-    .replace(/\./g,"")
-    .trim();
+  return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/\s+/g," ").replace(/\./g,"").trim();
 }
 
+/* GUARDAR CSV → DESCARGA */
 async function saveCSV(){
-  if(!requireDir()) return;
-
   const fname = buildFileName();
-  if(!fname){
-    toast("Completa todas las propiedades del CSV","err");
-    return;
-  }
-
+  if(!fname){ toast("Completa todas las propiedades del CSV","err"); return; }
   const {cog, soc, per} = state.slots;
   const header1 = ["APELLIDOS Y NOMBRES"];
   const header2 = [""];
-
   const appendEvalHeaders = (type, count)=>{
     for(let i=0;i<count;i++){
       const ev = state.evals[type][i];
       header1.push(ev.name || `Evaluación ${i+1}`);
-      // Segunda fila: criterio estable de la columna + fecha opcional.
       header2.push(`${ev.criterion || ev.code}${ev.date ? "|" + ev.date : ""}`);
     }
   };
-
-  appendEvalHeaders("cog", cog);
-  header1.push("DEF. COG","APORTE");
-  header2.push("","");
-
-  appendEvalHeaders("soc", soc);
-  header1.push("DEF. SOC","APORTE");
-  header2.push("","");
-
-  appendEvalHeaders("per", per);
-  header1.push("DEF. PER","APORTE","DEFINITIVA","ESTADO");
-  header2.push("","","","");
-
+  appendEvalHeaders("cog", cog); header1.push("DEF. COG","APORTE"); header2.push("","");
+  appendEvalHeaders("soc", soc); header1.push("DEF. SOC","APORTE"); header2.push("","");
+  appendEvalHeaders("per", per); header1.push("DEF. PER","APORTE","DEFINITIVA","ESTADO"); header2.push("","","","");
   const dataRows = [header1, header2];
-
   state.rows.forEach(row=>{
     const r = [row.name];
-
     row.cog.forEach(c=>r.push(c.note));
     const cogVals = row.cog.map(c=>{const n=parseNum(c.note); return n===null?1.0:n});
     const defCog = cogVals.length ? cogVals.reduce((a,b)=>a+b,0)/cogVals.length : 0;
     r.push(fmtNum(defCog), fmtNum(defCog*state.config.ponderacion.cognitivo/100));
-
     row.soc.forEach(c=>r.push(c.note));
     const socVals = row.soc.map(c=>parseNum(c.note)).filter(n=>n!==null);
     const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
     r.push(fmtNum(defSoc), fmtNum(defSoc*state.config.ponderacion.social/100));
-
     row.per.forEach(c=>r.push(c.note));
     const perVals = row.per.map(c=>parseNum(c.note)).filter(n=>n!==null);
     const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
     r.push(fmtNum(defPer), fmtNum(defPer*state.config.ponderacion.personal/100));
-
-    const def = defCog*state.config.ponderacion.cognitivo/100 +
-                defSoc*state.config.ponderacion.social/100 +
-                defPer*state.config.ponderacion.personal/100;
-
+    const def = defCog*state.config.ponderacion.cognitivo/100 + defSoc*state.config.ponderacion.social/100 + defPer*state.config.ponderacion.personal/100;
     r.push(fmtNum(def), def>=state.config.notaMinima?"Aprobado":"Reprobado");
     dataRows.push(r);
   });
-
   const csv = toCSV(dataRows);
-  const fh = await state.dirHandle.getFileHandle(fname,{create:true});
-  const w = await fh.createWritable();
-  await w.write(csv);
-  await w.close();
+
+  // DESCARGAR (PC y Android/WebToNative)
+  downloadTextFile(fname, csv, "text/csv");
 
   state.currentFile = fname;
-  $("statusFile").textContent = "📄 " + fname;
-  logAction("CSV guardado", `${fname} - ${state.rows.length} estudiantes`);
-  toast("Guardado: " + fname);
+  updateStatusFile("📄 " + fname, "ok");
+  logAction("CSV descargado", `${fname} - ${state.rows.length} estudiantes`);
+  toast("Descargado: " + fname);
 
   const key = state.currentProps.grado + "-" + state.currentProps.grupo;
   if(!state.config.asignaturas[key]) state.config.asignaturas[key]=[];
   if(!state.config.asignaturas[key].includes(state.currentProps.asignatura)){
     state.config.asignaturas[key].push(state.currentProps.asignatura);
-    await saveConfigSilent();
+    persistConfig();
   }
 }
 
-/* ============ EXPORT/IMPORT CONFIG ============ */
-async function exportConfig(){
-  if(!requireDir()) return;
+/* ============ BACKUPS (LOCALSTORAGE) ============ */
+function exportConfig(){
   const timestamp = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
   const fname = `backup_config_${timestamp}.json`;
-  await fsWrite(fname, JSON.stringify(state.config, null, 2));
+  const content = JSON.stringify(state.config, null, 2);
 
+  // Guardar en backups locales
+  const list = getBackupsList();
+  list.unshift({ name:fname, date:Date.now(), config: JSON.parse(content) });
+  while(list.length > MAX_BACKUPS) list.pop();
+  saveBackupsList(list);
+
+  // Descargar
+  downloadTextFile(fname, content, "application/json");
   logAction("Backup exportado", fname);
-  toast("Backup exportado: " + fname);
+  toast("Backup descargado: " + fname);
   showBackups();
 }
-
-async function importConfig(){
-  if(!requireDir()) return;
+function importConfig(){
   const input = document.createElement("input");
   input.type="file"; input.accept=".json";
   input.onchange = async e=>{
@@ -2221,76 +1810,68 @@ async function importConfig(){
       const text = await file.text();
       const loaded = JSON.parse(text);
       state.config = {...state.config, ...loaded};
-      await saveConfigSilent();
+      persistConfig();
       refreshPropSelects();
       logAction("Configuración importada", file.name);
       toast("Configuración importada");
       showBackups();
-    }catch(err){
-      toast("Error al importar: " + err.message, "err");
-    }
+    }catch(err){ toast("Error al importar: " + err.message, "err"); }
   };
   input.click();
 }
-
-async function showBackups(){
-  if(!requireDir()) return;
-  const backups = [];
-  const list = await fsList(n => n.startsWith("backup_config_") && n.endsWith(".json"));
-
-  for (const name of list){
-    try{
-      const text = await fsRead(name);
-      const config = JSON.parse(text);
-      backups.push({ name, size: text.length, date: Date.now(), config });
-    }catch(e){}
-  }
-
+function showBackups(){
+  const backups = getBackupsList();
   if(backups.length === 0){
-    $("backupsList").innerHTML = '<p style="color:var(--muted); text-align:center; grid-column:1/-1">No hay backups disponibles</p>';
+    $("backupsList").innerHTML = '<p style="color:var(--muted); text-align:center; grid-column:1/-1">No hay backups guardados</p>';
   } else {
     backups.sort((a,b)=>b.date-a.date);
-    $("backupsList").innerHTML = backups.map(b=>{
+    $("backupsList").innerHTML = backups.map((b, i)=>{
       const d = new Date(b.date).toLocaleString("es");
-      const size = (b.size/1024).toFixed(1);
       const summary = `
         <div><span>Grados:</span><span>${b.config.grados?.length||0}</span></div>
         <div><span>Asignaturas:</span><span>${Object.keys(b.config.asignaturas||{}).length}</span></div>
         <div><span>Nota mín:</span><span>${b.config.notaMinima||"-"}</span></div>
       `;
       return `
-        <div class="backup-card" onclick="loadBackup('${b.name}')">
-          <h4>${b.name}</h4>
-          <div class="meta">${d} • ${size} KB</div>
+        <div class="backup-card" onclick="loadBackup(${i})">
+          <h4>${escapeHtml(b.name)}</h4>
+          <div class="meta">${d}</div>
           <div class="summary">${summary}</div>
-        </div>`;
+          <button onclick="event.stopPropagation(); deleteBackup(${i})" style="margin-top:8px; width:100%; background:var(--bad); border-color:var(--bad)">🗑️ Eliminar</button>
+        </div>
+      `;
     }).join("");
   }
   openModal("modalBackups");
 }
-
-async function loadBackup(name){
-  const ok = await showConfirm("Cargar backup", `¿Cargar la configuración "${name}"?`);
+async function loadBackup(idx){
+  const list = getBackupsList();
+  const b = list[idx];
+  if(!b) return;
+  const ok = await showConfirm("Cargar backup", `¿Cargar la configuración "${b.name}"? Esto reemplazará la configuración actual.`);
   if(!ok) return;
-  try{
-    const text = await fsRead(name);
-    if(!text) throw new Error("Backup no encontrado");
-    state.config = { ...state.config, ...JSON.parse(text) };
-    await saveConfigSilent();
-    refreshPropSelects();
-    closeModal("modalBackups");
-    logAction("Backup cargado", name);
-    toast("Backup cargado: " + name);
-  }catch(err){
-    toast("Error al cargar: " + err.message, "err");
-  }
+  state.config = {...state.config, ...b.config};
+  persistConfig();
+  refreshPropSelects();
+  closeModal("modalBackups");
+  logAction("Backup cargado", b.name);
+  toast("Backup cargado: " + b.name);
+}
+function deleteBackup(idx){
+  const list = getBackupsList();
+  const b = list[idx];
+  if(!b) return;
+  const newList = list.filter((_,i)=>i!==idx);
+  saveBackupsList(newList);
+  logAction("Backup eliminado", b.name);
+  toast("Backup eliminado");
+  showBackups();
 }
 
 /* ============ NUEVO CSV ============ */
 function createNewCSV(){
-  if(!requireDir()) return;
   state.slots = {
-    cog: Math.max(1,Math.min(6,+$("newCogSlots").value||4)),
+    cog: Math.max(1,Math.min(8,+$("newCogSlots").value||4)),
     soc: Math.max(1,Math.min(3,+$("newSocSlots").value||3)),
     per: Math.max(1,Math.min(3,+$("newPerSlots").value||3))
   };
@@ -2301,162 +1882,68 @@ function createNewCSV(){
   addRow(-1);
   closeModal("modalNew");
   updateFileNamePreview();
-  $("statusFile").textContent = "📄 Nuevo (sin guardar)";
+  updateStatusFile("📄 Nuevo (sin guardar)", "warn");
   logAction("CSV nuevo creado", `${state.slots.cog}+${state.slots.soc}+${state.slots.per} casillas`);
   toast("CSV nuevo creado");
 }
 
 /* ============ SUBIR ESTUDIANTES MASIVAMENTE ============ */
 function openUploadStudentsModal(){
-  if(!requireDir()) return;
   $("studentsList").value = "";
   $("uploadPreview").style.display = "none";
   openModal("modalUploadStudents");
   logAction("Modal de subida de estudiantes abierto", "");
 }
-
 function detectAndFormatName(fullName){
-  // Limpia espacios extras
   fullName = fullName.trim().replace(/\s+/g, ' ');
-  
   if(!fullName) return null;
-  
-  // Divide en palabras
   const words = fullName.split(' ');
-  
-  // Si tiene 2 palabras: "Nombre Apellido" o "Apellido Nombre"
-  // Si tiene 3+ palabras: "Nombre(s) Apellido(s)"
-  
-  // Heurística: si la primera palabra es corta (<=3 chars) probablemente es inicial
-  // Si la última palabra es larga, probablemente es apellido compuesto
-  
-  // Detectar si ya está en formato "Apellidos Nombres"
-  // Convención colombiana: apellidos primero, luego nombres
-  // Ejemplo: "Moreno Potes Juan Carlos" vs "Juan Carlos Moreno Potes"
-  
-  // Estrategia: si el texto tiene 2 palabras, asumimos "Nombre Apellido"
-  // Si tiene 3+ palabras, buscamos patrones comunes
-  
-  if(words.length === 2){
-    // Probablemente "Nombre Apellido" → invertir a "Apellido Nombre"
-    return `${words[1]} ${words[0]}`;
-  }
-  
+  if(words.length === 2) return `${words[1]} ${words[0]}`;
+  const commonNames = ['juan','maria','pedro','jose','luis','carlos','ana','laura','diego','andres','camila','valentina','santiago','mateo','daniel','miguel','rafael','fernando','alberto','ricardo','jorge','pablo','roberto','francisco','antonio','manuel','alejandro','gabriela','patricia','elizabeth','carmen','rosa'];
   if(words.length === 3){
-    // Podría ser "Nombre Apellido1 Apellido2" o "Nombre1 Nombre2 Apellido"
-    // Heurística: si la última palabra es larga (>5 chars), es apellido
-    // Si la primera palabra es común (Juan, María, Pedro, etc.), es nombre
-    
-    const commonNames = ['juan','maria','pedro','jose','luis','carlos','ana','laura','diego','andres','camila','valentina','santiago','mateo','daniel','miguel','rafael','fernando','alberto','ricardo'];
-    const firstLower = words[0].toLowerCase();
-    
-    if(commonNames.includes(firstLower)){
-      // Formato: "Nombre Apellido1 Apellido2" → "Apellido1 Apellido2 Nombre"
-      return `${words[1]} ${words[2]} ${words[0]}`;
-    } else {
-      // Ya está en formato "Apellido1 Apellido2 Nombre"
-      return fullName;
-    }
+    if(commonNames.includes(words[0].toLowerCase())) return `${words[1]} ${words[2]} ${words[0]}`;
+    return fullName;
   }
-  
   if(words.length >= 4){
-    // "Nombre1 Nombre2 Apellido1 Apellido2" o "Apellido1 Apellido2 Nombre1 Nombre2"
-    const commonNames = ['juan','maria','pedro','jose','luis','carlos','ana','laura','diego','andres','camila','valentina','santiago','mateo','daniel','miguel','rafael','fernando','alberto','ricardo','jorge','pablo','roberto','francisco','antonio','manuel','alejandro','gabriela','patricia','elizabeth','carmen','rosa'];
-    
-    // Buscar dónde empiezan los apellidos (primera palabra que NO es nombre común)
     let apellidoStart = 0;
-    for(let i=0; i<words.length; i++){
-      if(!commonNames.includes(words[i].toLowerCase())){
-        apellidoStart = i;
-        break;
-      }
+    for(let i=0;i<words.length;i++){
+      if(!commonNames.includes(words[i].toLowerCase())){ apellidoStart = i; break; }
     }
-    
-    if(apellidoStart === 0){
-      // Ya está en formato apellidos primero
-      return fullName;
-    }
-    
-    // Reorganizar: apellidos primero, luego nombres
+    if(apellidoStart === 0) return fullName;
     const apellidos = words.slice(apellidoStart).join(' ');
     const nombres = words.slice(0, apellidoStart).join(' ');
     return `${apellidos} ${nombres}`;
   }
-  
   return fullName;
 }
-
 function previewStudents(){
   const text = $("studentsList").value.trim();
-  if(!text){
-    showAlert("Lista vacía", "Por favor ingresa al menos un estudiante.");
-    return;
-  }
-  
+  if(!text){ showAlert("Lista vacía", "Ingresa al menos un estudiante."); return; }
   const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   const autoSort = $("autoSort").checked;
   const detectFormat = $("detectFormat").checked;
-  
-  let students = lines.map(line=>{
-    if(detectFormat){
-      return detectAndFormatName(line);
-    }
-    return line.trim();
-  }).filter(n=>n!==null);
-  
-  if(autoSort){
-    students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
-  }
-  
+  let students = lines.map(line=> detectFormat ? detectAndFormatName(line) : line.trim()).filter(n=>n!==null);
+  if(autoSort) students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
   $("previewCount").textContent = students.length;
-  $("previewList").innerHTML = students.map((s,i)=>`
-    <div style="padding:4px 0; border-bottom:1px solid var(--border); display:flex; gap:8px">
-      <span style="color:var(--accent); font-weight:600; min-width:20px">${i+1}.</span>
-      <span>${s}</span>
-    </div>
-  `).join("");
-  
+  $("previewList").innerHTML = students.map((s,i)=>`<div style="padding:4px 0; border-bottom:1px solid var(--border); display:flex; gap:8px"><span style="color:var(--accent); font-weight:600; min-width:20px">${i+1}.</span><span>${escapeHtml(s)}</span></div>`).join("");
   $("uploadPreview").style.display = "block";
 }
-
 function processStudentsUpload(){
   const text = $("studentsList").value.trim();
-  if(!text){
-    showAlert("Lista vacía", "Por favor ingresa al menos un estudiante.");
-    return;
-  }
-  
+  if(!text){ showAlert("Lista vacía", "Ingresa al menos un estudiante."); return; }
   const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   const autoSort = $("autoSort").checked;
   const detectFormat = $("detectFormat").checked;
-  
-  let students = lines.map(line=>{
-    if(detectFormat){
-      return detectAndFormatName(line);
-    }
-    return line.trim();
-  }).filter(n=>n!==null);
-  
-  if(autoSort){
-    students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
-  }
-  
-  // Crear filas para cada estudiante
+  let students = lines.map(line=> detectFormat ? detectAndFormatName(line) : line.trim()).filter(n=>n!==null);
+  if(autoSort) students.sort((a,b)=>a.localeCompare(b, 'es', {sensitivity:'base'}));
   const {cog, soc, per} = state.slots;
   students.forEach(name=>{
-    const newRow = {
-      name: name,
-      cog: Array.from({length:cog},()=>({note:""})),
-      soc: Array.from({length:soc},()=>({note:""})),
-      per: Array.from({length:per},()=>({note:""}))
-    };
-    state.rows.push(newRow);
+    state.rows.push({ name, cog:Array.from({length:cog},()=>({note:""})), soc:Array.from({length:soc},()=>({note:""})), per:Array.from({length:per},()=>({note:""})) });
   });
-  
   renderRows();
   closeModal("modalUploadStudents");
   logAction("Estudiantes subidos masivamente", `${students.length} estudiantes agregados`);
-  toast(`${students.length} estudiantes agregados exitosamente`);
+  toast(`${students.length} estudiantes agregados`);
 }
 
 /* ============ IMPRIMIR ============ */
@@ -2473,17 +1960,13 @@ function printTable(){
 /* ============ MENU CONTEXTUAL EVAL-CODE ============ */
 function showEvalContextMenu(e, type, index){
   hideInputContextMenu();
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   const menu = document.getElementById('evalContextMenu');
   const groups = ['cog','soc','per'];
   const groupNames = {cog:'Cognitivo', soc:'Social', per:'Personal'};
-  
   let html = `<div class="menu-title">📋 Pegar valores en: ${state.evals[type][index].code} (${state.evals[type][index].name||'Sin nombre'})</div>`;
-  
   groups.forEach(g => {
-    html += `<div class="menu-group">`;
-    html += `<div class="menu-group-title">Desempeño ${groupNames[g]}</div>`;
+    html += `<div class="menu-group"><div class="menu-group-title">Desempeño ${groupNames[g]}</div>`;
     state.evals[g].forEach((ev, i) => {
       const disabled = (g===type && i===index) ? 'disabled' : '';
       const label = `${ev.code}${ev.name ? ' - '+ev.name : ''}`;
@@ -2491,61 +1974,24 @@ function showEvalContextMenu(e, type, index){
     });
     html += `</div>`;
   });
-  
   menu.innerHTML = html;
   menu.style.display = 'block';
-  
-  // Forzar reflow para obtener dimensiones reales antes de calcular posición
-  void menu.offsetWidth; 
-  
-  let x = e.pageX;
-  let y = e.pageY;
-  
-  // 1. Ajustar si se sale por la DERECHA
-  if (x + menu.offsetWidth > window.innerWidth + window.scrollX) {
-    x = window.innerWidth + window.scrollX - menu.offsetWidth - 10;
-  }
-  // 2. Ajustar si se sale por ABAJO
-  if (y + menu.offsetHeight > window.innerHeight + window.scrollY) {
-    y = window.innerHeight + window.scrollY - menu.offsetHeight - 10;
-  }
-  // 3. Ajustar si se sale por la IZQUIERDA
-  if (x < window.scrollX) {
-    x = window.scrollX + 10;
-  }
-  // 4. Ajustar si se sale por ARRIBA
-  if (y < window.scrollY) {
-    y = window.scrollY + 10;
-  }
-  
-  menu.style.left = x + 'px';
-  menu.style.top = y + 'px';
-  
+  void menu.offsetWidth;
+  let x = e.pageX, y = e.pageY;
+  if (x + menu.offsetWidth > window.innerWidth + window.scrollX) x = window.innerWidth + window.scrollX - menu.offsetWidth - 10;
+  if (y + menu.offsetHeight > window.innerHeight + window.scrollY) y = window.innerHeight + window.scrollY - menu.offsetHeight - 10;
+  if (x < window.scrollX) x = window.scrollX + 10;
+  if (y < window.scrollY) y = window.scrollY + 10;
+  menu.style.left = x + 'px'; menu.style.top = y + 'px';
   menu.querySelectorAll('.menu-item:not(.disabled)').forEach(item => {
-    item.onclick = () => {
-      copyColumn(item.dataset.fromType, +item.dataset.fromIdx, type, index);
-      hideEvalContextMenu();
-    };
+    item.onclick = () => { copyColumn(item.dataset.fromType, +item.dataset.fromIdx, type, index); hideEvalContextMenu(); };
   });
 }
-
-function hideEvalContextMenu(){
-  const menu = document.getElementById('evalContextMenu');
-  if(menu) menu.style.display = 'none';
-}
-
+function hideEvalContextMenu(){ const m = document.getElementById('evalContextMenu'); if(m) m.style.display = 'none'; }
 function copyColumn(fromType, fromIdx, toType, toIdx){
-  if(state.rows.length === 0){
-    toast('No hay estudiantes para copiar','err');
-    return;
-  }
-  
+  if(state.rows.length === 0){ toast('No hay estudiantes para copiar','err'); return; }
   const tieneFilasVacias = state.rows.some(row => !row[fromType]?.[fromIdx] || row[fromType][fromIdx].note === '');
-  if (tieneFilasVacias) {
-    toast('No se puede copiar porque la columna de origen tiene celdas vacías', 'err');
-    return;
-  }
-
+  if (tieneFilasVacias) { toast('La columna de origen tiene celdas vacías', 'err'); return; }
   let count = 0;
   state.rows.forEach(row => {
     const val = row[fromType][fromIdx]?.note || '';
@@ -2557,126 +2003,67 @@ function copyColumn(fromType, fromIdx, toType, toIdx){
   toast(`Copiado: ${state.evals[fromType][fromIdx].code} → ${state.evals[toType][toIdx].code}`);
 }
 
-/* ============ MENU CONTEXTUAL INPUT DATA-F ============ */
+/* ============ MENU CONTEXTUAL INPUT ============ */
 function showInputContextMenu(e, type, idx, value){
   hideEvalContextMenu();
-  e.preventDefault();
-  e.stopPropagation();
+  e.preventDefault(); e.stopPropagation();
   const menu = document.getElementById('inputContextMenu');
   menu.innerHTML = `
-    <div class="menu-title">📋 Valor: "${value}" → ${state.evals[type][idx].code}</div>
+    <div class="menu-title">📋 Valor: "${escapeHtml(value)}" → ${state.evals[type][idx].code}</div>
     <div class="menu-item" data-action="copy-column">📝 Copiar este valor a TODA la columna</div>
     <div class="menu-item" data-action="clear-column">🗑️ Limpiar toda la columna</div>
   `;
   menu.style.display = 'block';
-  menu.style.left = e.pageX + 'px';
-  menu.style.top = e.pageY + 'px';
-  
+  menu.style.left = e.pageX + 'px'; menu.style.top = e.pageY + 'px';
   const rect = menu.getBoundingClientRect();
   if(rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 10) + 'px';
   if(rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 10) + 'px';
-  
-  menu.querySelector('[data-action="copy-column"]').onclick = () => {
-    copyValueToColumn(type, idx, value);
-    hideInputContextMenu();
-  };
-  menu.querySelector('[data-action="clear-column"]').onclick = () => {
-    copyValueToColumn(type, idx, '');
-    hideInputContextMenu();
-  };
+  menu.querySelector('[data-action="copy-column"]').onclick = () => { copyValueToColumn(type, idx, value); hideInputContextMenu(); };
+  menu.querySelector('[data-action="clear-column"]').onclick = () => { copyValueToColumn(type, idx, ''); hideInputContextMenu(); };
 }
-
-function hideInputContextMenu(){
-  const menu = document.getElementById('inputContextMenu');
-  if(menu) menu.style.display = 'none';
-}
-
+function hideInputContextMenu(){ const m = document.getElementById('inputContextMenu'); if(m) m.style.display = 'none'; }
 function copyValueToColumn(type, idx, value){
-  if(value === ''){
-    toast('Esta columna no se pudo copiar porque el valor está vacío', 'err');
-    return;
-  }
+  if(value === ''){ toast('No se pudo copiar: valor vacío', 'err'); return; }
   if(state.rows.length === 0) return;
   let count = 0;
-  state.rows.forEach(row => {
-    if(row[type][idx]) {
-      row[type][idx].note = value;
-      count++;
-    }
-  });
-
+  state.rows.forEach(row => { if(row[type][idx]){ row[type][idx].note = value; count++; } });
   logAction('Columna actualizada', `${state.evals[type][idx].code}: "${value}" aplicado a ${count} filas`);
   renderRows();
   toast(`Valor aplicado a ${count} estudiantes`);
 }
 
-/* ============ CIERRE INTELIGENTE DE MENÚS CONTEXTUALES ============ */
+/* ============ CIERRE DE MENÚS ============ */
 document.addEventListener('click', (e) => {
-    // Solo ocultar el menú de eval-code si el clic NO fue dentro del menú NI en el código de evaluación
-    if (!e.target.closest('.eval-context-menu') && !e.target.closest('.eval-code')) {
-        hideEvalContextMenu();
-    }
-    
-    // Solo ocultar el menú de input si el clic NO fue dentro del menú
-    if (!e.target.closest('.input-context-menu')) {
-        hideInputContextMenu();
-    }
+  if (!e.target.closest('.eval-context-menu') && !e.target.closest('.eval-code')) hideEvalContextMenu();
+  if (!e.target.closest('.input-context-menu')) hideInputContextMenu();
 });
-
-document.addEventListener('scroll', () => { 
-    hideEvalContextMenu(); 
-    hideInputContextMenu(); 
-}, true);
+document.addEventListener('scroll', () => { hideEvalContextMenu(); hideInputContextMenu(); }, true);
 
 /* ============ FORMATO DE INPUT CON BLUR ============ */
 function formatInputValue(value){
   if(value === null || value === undefined || value === "") return "";
-  
   let cleaned = String(value).trim();
-  
-  // Limpiar puntos o comas al final
-  if(cleaned.endsWith('.') || cleaned.endsWith(',')) {
-    cleaned = cleaned.slice(0, -1);
-  }
-  
+  if(cleaned.endsWith('.') || cleaned.endsWith(',')) cleaned = cleaned.slice(0, -1);
   const num = parseNum(cleaned);
   if(num === null) return "";
-  
-  // Obtener el máximo desde tu configuración (Asumiendo que se guarda en state.rango.max)
   const maxScale = (typeof state !== 'undefined' && state.config.rango && state.config.rango.max) ? state.config.rango.max : 5;
-
-  // CASO 1: ESCALA CORTA (Máximo 5 o menos, ej: de 1 a 10) -> Aplicar atajo inteligente
   if (maxScale < 10) {
-    // Solo si el usuario NO escribió explícitamente un punto o una coma
     if (!cleaned.includes('.') && !cleaned.includes(',')) {
-      const digits = cleaned.length;
-      
-      if (digits === 2) {
-        return (num / 10).toFixed(1);  // "10" -> "1.0", "50" -> "5.0"
-      }
+      if (cleaned.length === 2) return (num / 10).toFixed(1);
     }
-    // Si ya tenía punto/coma (ej: "4.0"), pasa directo al formato estándar
-    return num.toFixed(1); 
-  } else {
-    // CASO 2: ESCALAS MAYORES A 10 (ej: de 10 a 50, de 1 a 100, etc.)
-    // NO se altera el entero bajo ninguna circunstancia. "40" -> "40.0", "10" -> "10.0"
     return num.toFixed(1);
   }
+  return num.toFixed(1);
 }
-
 function handleInputBlur(e, type, idx){
   const formatted = formatInputValue(e.target.value);
   e.target.value = formatted;
-  
   const tr = e.target.closest('tr');
-  if (!tr) return; 
-  
+  if (!tr) return;
   const rowIdx = +tr.dataset.idx;
-  
   if (state.rows[rowIdx] && state.rows[rowIdx][type] && state.rows[rowIdx][type][idx]) {
     state.rows[rowIdx][type][idx].note = formatted;
   }
-  
   validateNoteInput(e.target);
   calcRow(rowIdx);
   updateStats();
@@ -2685,102 +2072,61 @@ function handleInputBlur(e, type, idx){
 /* ============ NAVEGACIÓN CON TECLADO ============ */
 function handleInputKeydown(e, type, idx){
   const tr = e.target.closest('tr');
-  const rowIdx = +tr.dataset.idx;
   const tbody = document.getElementById('tbody');
   const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
   const currentRowIndex = rows.findIndex(r => r === tr);
-  
-  // Obtener todos los inputs de la fila actual
   const currentInputs = Array.from(tr.querySelectorAll('input[data-f]'));
   const currentIndex = currentInputs.findIndex(inp => inp === e.target);
-  
   switch(e.key){
     case 'Enter':
       e.preventDefault();
-      // Ir al siguiente input de la misma fila
-      if(currentIndex < currentInputs.length - 1){
-        currentInputs[currentIndex + 1].focus();
-        currentInputs[currentIndex + 1].select();
-      } else if(currentRowIndex < rows.length - 1){
-        // Si es el último de la fila, ir al primero de la siguiente
-        const nextRowInputs = rows[currentRowIndex + 1].querySelectorAll('input[data-f]');
-        if(nextRowInputs.length > 0){
-          nextRowInputs[1].focus();
-          nextRowInputs[1].select();
-        }
+      if(currentIndex < currentInputs.length - 1){ currentInputs[currentIndex+1].focus(); currentInputs[currentIndex+1].select(); }
+      else if(currentRowIndex < rows.length - 1){
+        const nextRowInputs = rows[currentRowIndex+1].querySelectorAll('input[data-f]');
+        if(nextRowInputs.length > 0){ nextRowInputs[1].focus(); nextRowInputs[1].select(); }
       }
       break;
-      
     case 'ArrowRight':
       e.preventDefault();
-      if(currentIndex < currentInputs.length - 1){
-        currentInputs[currentIndex + 1].focus();
-        currentInputs[currentIndex + 1].select();
-      }
+      if(currentIndex < currentInputs.length - 1){ currentInputs[currentIndex+1].focus(); currentInputs[currentIndex+1].select(); }
       break;
-      
     case 'ArrowLeft':
       e.preventDefault();
-      if(currentIndex > 0){
-        currentInputs[currentIndex - 1].focus();
-        currentInputs[currentIndex - 1].select();
-      }
+      if(currentIndex > 0){ currentInputs[currentIndex-1].focus(); currentInputs[currentIndex-1].select(); }
       break;
-      
     case 'ArrowDown':
       e.preventDefault();
       if(currentRowIndex < rows.length - 1){
-        const nextRowInputs = rows[currentRowIndex + 1].querySelectorAll('input[data-f]');
-        // Buscar el input en la misma posición relativa (misma columna)
-        if(nextRowInputs[currentIndex]){
-          nextRowInputs[currentIndex].focus();
-          nextRowInputs[currentIndex].select();
-        }
+        const nextRowInputs = rows[currentRowIndex+1].querySelectorAll('input[data-f]');
+        if(nextRowInputs[currentIndex]){ nextRowInputs[currentIndex].focus(); nextRowInputs[currentIndex].select(); }
       }
       break;
-      
     case 'ArrowUp':
       e.preventDefault();
       if(currentRowIndex > 0){
-        const prevRowInputs = rows[currentRowIndex - 1].querySelectorAll('input[data-f]');
-        if(prevRowInputs[currentIndex]){
-          prevRowInputs[currentIndex].focus();
-          prevRowInputs[currentIndex].select();
-        }
+        const prevRowInputs = rows[currentRowIndex-1].querySelectorAll('input[data-f]');
+        if(prevRowInputs[currentIndex]){ prevRowInputs[currentIndex].focus(); prevRowInputs[currentIndex].select(); }
       }
       break;
   }
 }
 
-/* ============ INPUT NUMÉRICO INTELIGENTE ============ */
+/* ============ INPUT NUMÉRICO ============ */
 function handleNumericInput(e, type, idx){
-    let value = e.target.value;
-    
-    // 1. Permitir solo dígitos y un punto decimal
-    value = value.replace(/[^0-9.]/g, '');
-    
-    // 2. Evitar múltiples puntos decimales (ej: "3.5.2" -> "3.52")
-    const parts = value.split('.');
-    if(parts.length > 2){
-        value = parts[0] + '.' + parts.slice(1).join('');
-    }
-    
-    e.target.value = value;
-    
-    // 3. Actualizar estado temporalmente para que los cálculos en vivo no fallen
-    const tr = e.target.closest('tr');
-    const rowIdx = +tr.dataset.idx;
-    state.rows[rowIdx][type][idx].note = value;
-    
-    // 4. Recalcular (parseNum manejará "3." como 3, lo cual es aceptable mientras se escribe)
-    calcRow(rowIdx);
-    updateStats();
+  let value = e.target.value;
+  value = value.replace(/[^0-9.]/g, '');
+  const parts = value.split('.');
+  if(parts.length > 2) value = parts[0] + '.' + parts.slice(1).join('');
+  e.target.value = value;
+  const tr = e.target.closest('tr');
+  const rowIdx = +tr.dataset.idx;
+  state.rows[rowIdx][type][idx].note = value;
+  calcRow(rowIdx);
+  updateStats();
 }
 
-/* ============ EVENTOS ============ */
-$("btnDir").onclick = selectDirectory;
+/* ============ EVENTOS DE BOTONES ============ */
 $("btnConfig").onclick = ()=>{
-  if(!requireDir()) return;
   $("cfgJornadas").value = state.config.jornadas.join(",");
   $("cfgPondCog").value = state.config.ponderacion.cognitivo;
   $("cfgPondSoc").value = state.config.ponderacion.social;
@@ -2793,68 +2139,55 @@ $("btnConfig").onclick = ()=>{
 };
 $("btnBackups").onclick = showBackups;
 $("btnAudit").onclick = showAuditLog;
-$("btnNew").onclick = ()=>{
-  if(!requireDir()) return;
-  openModal("modalNew");
-};
+$("btnNew").onclick = ()=>openModal("modalNew");
 $("btnLoad").onclick = loadCSVFile;
 $("btnSave").onclick = saveCSV;
-$("btnUploadStudents").onclick = openUploadStudentsModal
+$("btnUploadStudents").onclick = openUploadStudentsModal;
 $("btnPrint").onclick = printTable;
-
-refreshPropSelects();
-generateEvalCodes();
-buildTable();
-
-logAction("Aplicación iniciada", "");
 
 /* ============ SERVICE WORKER ============ */
 if('serviceWorker' in navigator){
   const swCode = `
     const CACHE_NAME = 'gestor-calificaciones-v3';
     const urlsToCache = ['/'];
-    
     self.addEventListener('install', event => {
-      event.waitUntil(
-        caches.open(CACHE_NAME)
-          .then(cache => cache.addAll(urlsToCache))
-      );
+      event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
     });
-    
     self.addEventListener('fetch', event => {
-      event.respondWith(
-        caches.match(event.request)
-          .then(response => response || fetch(event.request))
-      );
+      event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
     });
   `;
-  
   const blob = new Blob([swCode], {type: 'application/javascript'});
   const swUrl = URL.createObjectURL(blob);
-  
-  navigator.serviceWorker.register(swUrl)
-    .then(reg => console.log('SW registrado'))
-    .catch(err => console.log('SW error:', err));
+  navigator.serviceWorker.register(swUrl).catch(err => console.log('SW error:', err));
 }
 
+/* ============ TIMESTAMP ============ */
 function updateTimestamp(){
   const el = document.getElementById('statusTimestamp');
   if(el) el.textContent = '🕐 ' + new Date().toLocaleString('es');
 }
-
-/* ============ INICIALIZACIÓN Y RECORDATORIO DE CARPETA ============ */
-const savedDir = localStorage.getItem('kynetra_last_dir') || state.config.lastDirName;
-
-if(savedDir && !state.dirHandle){
-    // Mostramos en la barra de estado que recordamos la carpeta (en color amarillo/warn)
-    updateStatusDir(`📁 Última: ${savedDir} (Clic en Directorio)`, "warn");
-    toast(`💡 Recuerda: Tu última carpeta fue "${savedDir}". Selecciónala para continuar.`, "info");
-} else if (!state.dirHandle) {
-    toast("Seleccione una carpeta para empezar a trabajar", "info");
-}
-
 updateTimestamp();
 setInterval(updateTimestamp, 60000);
+
+/* ============ INICIALIZACIÓN ============ */
+(function init(){
+  restoreAudit();
+  const hasConfig = restoreConfig();
+  refreshPropSelects();
+  generateEvalCodes();
+  buildTable();
+
+  if(hasConfig){
+    updateStatusDir('💾 Configuración cargada', 'ok');
+  } else {
+    persistConfig();
+    updateStatusDir('💾 Configuración por defecto', 'warn');
+    toast('Ajustes iniciados por defecto. Ve a ⚙️ Ajustes para configurar.', 'info');
+  }
+
+  logAction("Aplicación iniciada", "Modo localStorage + descarga");
+})();
 </script>
 </body>
 </html>
