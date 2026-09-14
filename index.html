@@ -1084,6 +1084,66 @@ function parseNum(s){
   return isNaN(n) ? null : n;
 }
 
+/* ============ CAPA DE ABSTRACCIÓN DE ARCHIVOS (PC + Android) ============ */
+const isAndroid = /Android/i.test(navigator.userAgent) || !window.showDirectoryPicker;
+
+// Almacén virtual en memoria para Android
+state.virtualFiles = state.virtualFiles || {}; // { "nombre.csv": "contenido" }
+
+// Descarga nativa (WebToNative la captura como descarga real)
+function downloadFile(name, content){
+  const mime = name.endsWith(".json") ? "application/json" : "text/csv";
+  const blob = new Blob([content], { type: mime + ";charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// Escribir
+async function fsWrite(name, content){
+  if(!isAndroid && state.dirHandle){
+    const fh = await state.dirHandle.getFileHandle(name, { create:true });
+    const w  = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+  } else {
+    state.virtualFiles[name] = content;
+    downloadFile(name, content); // En Android: dispara la descarga
+  }
+}
+
+// Leer (devuelve string o null)
+async function fsRead(name){
+  if(!isAndroid && state.dirHandle){
+    try{
+      const fh = await state.dirHandle.getFileHandle(name);
+      const f  = await fh.getFile();
+      return await f.text();
+    }catch(e){ return null; }
+  }
+  return state.virtualFiles[name] ?? null;
+}
+
+// Listar nombres (filtrado por prefijo/sufijo opcional)
+async function fsList(filterFn){
+  const names = [];
+  if(!isAndroid && state.dirHandle){
+    for await (const [name] of state.dirHandle.entries()){
+      if(!filterFn || filterFn(name)) names.push(name);
+    }
+  } else {
+    for(const name of Object.keys(state.virtualFiles)){
+      if(!filterFn || filterFn(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
 /* ============ AUDITORÍA ============ */
 function logAction(action, details=""){
   const entry = {
@@ -1120,7 +1180,8 @@ function clearAuditLog(){
 /* ============ VALIDACIÓN DE CARPETA ============ */
 function requireDir(){
   if(!state.dirHandle){
-    showAlert("Carpeta requerida", "Debes seleccionar una carpeta antes de realizar esta acción.");
+    showAlert("Archivos requeridos",
+      "Primero selecciona tus archivos (config.json y/o CSV) desde '📁 Directorio'.");
     return false;
   }
   return true;
@@ -1194,9 +1255,9 @@ function updateStatusFile(text, type="default"){
 /* ============ FILE SYSTEM ============ */
 async function selectDirectory(){
   try {
-    // Si es un entorno de escritorio con soporte de File System API (PC)
-    if (window.showDirectoryPicker && !navigator.userAgent.includes("Android")) {
-      state.dirHandle = await window.showDirectoryPicker({mode: "readwrite"});
+    // ---------- PC ----------
+    if (!isAndroid && window.showDirectoryPicker) {
+      state.dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
       state.config.lastDirName = state.dirHandle.name;
       localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
       updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
@@ -1205,45 +1266,49 @@ async function selectDirectory(){
       await scanCSVsForConfig();
       refreshPropSelects();
       toast("Carpeta seleccionada: " + state.dirHandle.name);
-    } else {
-      // Solución para WebToNative / Android (Selección múltiple de archivos)
-      const input = document.createElement("input");
-      input.type = "file";
-      input.multiple = true; // Permite elegir varios archivos a la vez
-      input.accept = ".json,.csv"; // Filtra los tipos de archivo que usas
-
-      input.onchange = async (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length > 0) {
-          // Guardamos las referencias de los archivos en tu estado global
-          state.loadedFiles = files; 
-          
-          const folderName = "Archivos Seleccionados (" + files.length + ")";
-          state.lastDirName = folderName;
-          updateStatusDir(`📁 ${folderName}`, "ok");
-          toast(`${files.length} archivo(s) cargado(s)`);
-
-          // 1. Buscar y procesar config.json si está en los archivos seleccionados
-          const configFile = files.find(f => f.name.toLowerCase() === "config.json");
-          if (configFile) {
-            const txt = await configFile.text();
-            state.config = { ...state.config, ...JSON.parse(txt) };
-          }
-
-          // 2. Procesar archivos CSV seleccionados
-          const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
-          if (typeof processCSVFiles === "function" && csvFiles.length > 0) {
-            await processCSVFiles(csvFiles);
-          }
-
-          refreshPropSelects();
-        }
-      };
-      
-      input.click();
+      return;
     }
-  } catch(e) {
-    if (e.name !== 'AbortError') {
+
+    // ---------- ANDROID ----------
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".json,.csv,text/*";
+
+    input.onchange = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      // Cargar TODOS los archivos al almacén virtual
+      for (const f of files){
+        state.virtualFiles[f.name] = await f.text();
+      }
+
+      // "dirHandle" simulado para que el resto del código siga funcionando
+      state.dirHandle  = { name: `Android (${files.length} archivos)` };
+      state.lastDirName = state.dirHandle.name;
+      localStorage.setItem('kynetra_last_dir', state.dirHandle.name);
+
+      updateStatusDir(`📁 ${state.dirHandle.name}`, "ok");
+
+      // Si vino config.json, cargarlo; si no, crearlo en memoria
+      const cfg = state.virtualFiles["config.json"];
+      if (cfg){
+        try { state.config = { ...state.config, ...JSON.parse(cfg) }; } catch(_){}
+      } else {
+        await saveConfigSilent();
+      }
+
+      await scanCSVsForConfig();
+      refreshPropSelects();
+
+      logAction("Archivos seleccionados (Android)", `${files.length} archivos`);
+      toast(`${files.length} archivo(s) cargado(s)`);
+    };
+
+    input.click();
+  } catch(e){
+    if (e.name !== "AbortError"){
       console.error(e);
       toast("Error al seleccionar los archivos", "err");
     }
@@ -1251,21 +1316,17 @@ async function selectDirectory(){
 }
 
 async function loadConfig(){
-  try{
-    const fh = await state.dirHandle.getFileHandle("config.json");
-    const file = await fh.getFile();
-    const txt = await file.text();
-    const loaded = JSON.parse(txt);
-    state.config = {...state.config, ...loaded};
-
-    // Sincronización: si config tiene un nombre pero localStorage no, copiarlo
-    if(state.config.lastDirName && !localStorage.getItem('kynetra_last_dir')){
+  const txt = await fsRead("config.json");
+  if (txt){
+    try {
+      state.config = { ...state.config, ...JSON.parse(txt) };
+      if(state.config.lastDirName && !localStorage.getItem('kynetra_last_dir')){
         localStorage.setItem('kynetra_last_dir', state.config.lastDirName);
-    }
-
-    logAction("Configuración cargada", "config.json");
-  }catch(e){
-    await saveConfig();
+      }
+      logAction("Configuración cargada", "config.json");
+    }catch(_){}
+  } else {
+    await saveConfigSilent();
   }
 }
 
@@ -1294,10 +1355,7 @@ async function saveConfig(){
   });
   state.config.grupos = grupos;
   
-  const fh = await state.dirHandle.getFileHandle("config.json",{create:true});
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify(state.config,null,2));
-  await w.close();
+  await fsWrite("config.json", JSON.stringify(state.config, null, 2));
   logAction("Configuración guardada", `${gradosSel.length} grados, ${Object.keys(grupos).length} grupos`);
   refreshPropSelects();
   closeModal("modalConfig");
@@ -1305,23 +1363,19 @@ async function saveConfig(){
 }
 
 async function saveConfigSilent(){
-  const fh = await state.dirHandle.getFileHandle("config.json",{create:true});
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify(state.config,null,2));
-  await w.close();
+  await fsWrite("config.json", JSON.stringify(state.config, null, 2));
 }
 
 async function scanCSVsForConfig(){
-  for await (const [name, handle] of state.dirHandle.entries()){
-    if(name.endsWith(".csv") && name !== "config.json"){
-      const parts = name.replace(".csv","").split("_");
-      if(parts.length>=5){
-        const [asig, grado, grupo] = parts;
-        const key = grado + "-" + grupo;
-        if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
-        if(!state.config.asignaturas[key].includes(asig))
-          state.config.asignaturas[key].push(asig);
-      }
+  const csvs = await fsList(n => n.endsWith(".csv"));
+  for (const name of csvs){
+    const parts = name.replace(".csv","").split("_");
+    if(parts.length >= 5){
+      const [asig, grado, grupo] = parts;
+      const key = grado + "-" + grupo;
+      if(!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
+      if(!state.config.asignaturas[key].includes(asig))
+        state.config.asignaturas[key].push(asig);
     }
   }
 }
@@ -2149,10 +2203,8 @@ async function exportConfig(){
   if(!requireDir()) return;
   const timestamp = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
   const fname = `backup_config_${timestamp}.json`;
-  const fh = await state.dirHandle.getFileHandle(fname,{create:true});
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify(state.config,null,2));
-  await w.close();
+  await fsWrite(fname, JSON.stringify(state.config, null, 2));
+
   logAction("Backup exportado", fname);
   toast("Backup exportado: " + fname);
   showBackups();
@@ -2184,22 +2236,16 @@ async function importConfig(){
 async function showBackups(){
   if(!requireDir()) return;
   const backups = [];
-  for await (const [name, handle] of state.dirHandle.entries()){
-    if(name.startsWith("backup_config_") && name.endsWith(".json")){
-      try{
-        const file = await handle.getFile();
-        const text = await file.text();
-        const config = JSON.parse(text);
-        backups.push({
-          name,
-          size: file.size,
-          date: file.lastModified,
-          config
-        });
-      }catch(e){}
-    }
+  const list = await fsList(n => n.startsWith("backup_config_") && n.endsWith(".json"));
+
+  for (const name of list){
+    try{
+      const text = await fsRead(name);
+      const config = JSON.parse(text);
+      backups.push({ name, size: text.length, date: Date.now(), config });
+    }catch(e){}
   }
-  
+
   if(backups.length === 0){
     $("backupsList").innerHTML = '<p style="color:var(--muted); text-align:center; grid-column:1/-1">No hay backups disponibles</p>';
   } else {
@@ -2217,24 +2263,19 @@ async function showBackups(){
           <h4>${b.name}</h4>
           <div class="meta">${d} • ${size} KB</div>
           <div class="summary">${summary}</div>
-        </div>
-      `;
+        </div>`;
     }).join("");
   }
-  
   openModal("modalBackups");
 }
 
 async function loadBackup(name){
-  const ok = await showConfirm("Cargar backup", `¿Cargar la configuración "${name}"? Esto reemplazará la configuración actual.`);
+  const ok = await showConfirm("Cargar backup", `¿Cargar la configuración "${name}"?`);
   if(!ok) return;
-  
   try{
-    const fh = await state.dirHandle.getFileHandle(name);
-    const file = await fh.getFile();
-    const text = await file.text();
-    const loaded = JSON.parse(text);
-    state.config = {...state.config, ...loaded};
+    const text = await fsRead(name);
+    if(!text) throw new Error("Backup no encontrado");
+    state.config = { ...state.config, ...JSON.parse(text) };
     await saveConfigSilent();
     refreshPropSelects();
     closeModal("modalBackups");
