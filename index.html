@@ -841,7 +841,7 @@ Pedro Martínez Rodríguez
 
     <div class="modal-actions">
       <button onclick="closeModal('modalSaveAs')">Cancelar</button>
-      <button class="primary" onclick="executeFinalDownload()">✅ Elegir carpeta y Guardar</button>
+      <button class="primary" onclick="alDownload()">✅ Elegir carpeta y Guardar</button>
     </div>
   </div>
 </div>
@@ -1878,7 +1878,32 @@ async function executeFinalDownload() {
     return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
   }).join(",")).join("\n");
 
-  // --- Intentar API moderna de "Guardar Como" (Escritorio/Android moderno) ---
+  // Crear objeto File con el nombre correcto (CRÍTICO para Android)
+  const file = new File(["\uFEFF" + csvContent], fname, { type: "text/csv;charset=utf-8" });
+  closeModal("modalSaveAs");
+
+  // 1. INTENTO 1: Web Share API (La MEJOR y única opción real para Android moderno)
+  // Abre el menú nativo de Android para elegir "Archivos", "Drive", etc. y respeta el nombre.
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'Guardar Planilla',
+        text: `Archivo de calificaciones: ${fname}`
+      });
+      finalizeSaveLogic(fname);
+      toast("✅ Menú de guardado nativo abierto. Elige 'Archivos' o tu carpeta preferida.");
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        toast("Guardado cancelado por el usuario");
+        return;
+      }
+      console.warn("Web Share falló, intentando otro método:", err);
+    }
+  }
+
+  // 2. INTENTO 2: File System Access API (Funciona en PC, raramente en Android)
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
@@ -1886,24 +1911,21 @@ async function executeFinalDownload() {
         types: [{ description: 'Archivo CSV', accept: { 'text/csv': ['.csv'] } }]
       });
       const writable = await handle.createWritable();
-      await writable.write(csvContent);
+      await writable.write(file);
       await writable.close();
-      closeModal("modalSaveAs");
-      toast("✅ Archivo guardado exitosamente en la carpeta elegida");
       finalizeSaveLogic(fname);
+      toast("✅ Archivo guardado exitosamente en la carpeta elegida");
       return;
     } catch (err) {
       if (err.name === 'AbortError') {
-        closeModal("modalSaveAs");
-        return; // Usuario canceló
+        toast("Guardado cancelado");
+        return;
       }
-      // Si falla, caemos al método tradicional
     }
   }
 
-  // --- Fallback tradicional (Android WebView / Navegadores antiguos) ---
-  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" }); // \uFEFF es BOM para Excel
-  const url = URL.createObjectURL(blob);
+  // 3. INTENTO 3: Fallback tradicional (Solo para navegadores de escritorio antiguos)
+  const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
   a.download = fname;
@@ -1912,9 +1934,8 @@ async function executeFinalDownload() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   
-  closeModal("modalSaveAs");
-  toast("⚠️ Descarga iniciada. Si el nombre cambió, ¡renómbralo con el que copiaste!");
   finalizeSaveLogic(fname);
+  toast("⚠️ Descarga automática iniciada. En Android, revisa 'Descargas' y renombra con el nombre copiado.");
 }
 
 function finalizeSaveLogic(fname) {
@@ -1935,20 +1956,45 @@ function finalizeSaveLogic(fname) {
 function exportConfig(){
   const now = new Date();
   const pad = n => String(n).padStart(2,"0");
-  
-  // Formato exacto solicitado: backup_config_AAAAMMDD-HHMMSS.json
   const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const fname = `backup_config_${stamp}.json`;
   const content = JSON.stringify(state.config, null, 2);
+  
+  // Usar File en lugar de Blob para preservar el nombre
+  const file = new File([content], fname, { type: "application/json" });
 
   const list = getBackupsList();
   list.unshift({ name:fname, date:Date.now(), config: JSON.parse(content) });
   while(list.length > MAX_BACKUPS) list.pop();
   saveBackupsList(list);
 
-  downloadTextFile(fname, content, "application/json");
-  logAction("Backup exportado", fname);
-  toast("Backup descargado: " + fname);
+  // Intentar Web Share primero (menú nativo de Android)
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: 'Backup Configuración' })
+      .then(() => {
+        logAction("Backup exportado (Share)", fname);
+        toast("✅ Backup listo. Elige 'Archivos' para guardarlo donde quieras.");
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') fallbackDownload(file, fname);
+      });
+  } else {
+    fallbackDownload(file, fname);
+  }
+
+  function fallbackDownload(fileObj, fileName) {
+    const url = URL.createObjectURL(fileObj);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    logAction("Backup exportado", fileName);
+    toast("Backup descargado: " + fileName);
+  }
+  
   showBackups();
 }
   
