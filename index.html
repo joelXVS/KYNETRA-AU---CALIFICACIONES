@@ -1098,54 +1098,54 @@ function saveBackupsList(list){
 
 /* ============ DESCARGA DE ARCHIVOS (PC + Android/WebToNative) ============ */
 function sanitizeFileName(name){
+  // Permite tildes, ñ y espacios. Solo bloquea caracteres estrictamente ilegales en FS.
   return String(name)
-    // 1. Quitar SOLAMENTE caracteres estrictamente prohibidos en sistemas de archivos (Windows/Android)
-    .replace(/[\\/:*?"<>|]+/g, "_")
-    // 2. Evitar nombres que empiecen o terminen con espacios o puntos (causa errores en gestores de descarga)
-    .replace(/^[.\s]+|[.\s]+$/g, "")
-    // 3. Limitar longitud máxima por seguridad (evita errores de ruta en algunos sistemas)
-    .substring(0, 150);
+    .replace(/[\\/:*?"<>|]+/g, "_") // Reemplaza caracteres prohibidos por guion bajo
+    .replace(/^\.+/, "")            // Elimina puntos al inicio
+    .substring(0, 150);             // Evita errores de longitud de ruta
 }
 
 function downloadTextFile(name, content, mime){
   const safeName = sanitizeFileName(name);
-  const type = (mime || "text/plain") + ";charset=utf-8";
-  
-  // CAMBIO CLAVE: Usar 'File' en lugar de 'Blob' ayuda a que los bridges nativos de Android respeten el nombre
-  const file = new File([content], safeName, { type });
-  const url = URL.createObjectURL(file);
+  console.log("📥 Intentando descargar con nombre:", safeName);
 
-  // ---------- 1) Intentar bridges nativos de WebToNative ----------
+  // 1. Intentar puentes nativos (algunos esperan nombre primero, otros contenido primero)
   const bridges = [
-    () => window.Android?.downloadFile?.(url, safeName),
-    () => window.Android?.download?.(url, safeName),
-    () => window.Android?.saveFile?.(url, safeName, type),
-    () => window.WebToNative?.download?.(url, safeName),
-    () => window.WebToNative?.downloadFile?.(url, safeName),
-    () => window.WTN?.download?.(url, safeName),
-    () => window.App?.download?.(url, safeName),
-    () => window.Native?.download?.(url, safeName),
+    () => window.Android?.downloadFile?.(safeName, content),
+    () => window.Android?.download?.(safeName, content),
+    () => window.WebToNative?.download?.(safeName, content),
+    () => window.Android?.downloadFile?.(content, safeName), // Orden inverso
+    () => window.Android?.download?.(content, safeName)
   ];
-  
+
   for (const tryBridge of bridges){
-    try { 
-      if (tryBridge()) { 
-        setTimeout(()=>URL.revokeObjectURL(url), 2000); 
-        return; 
-      } 
-    } catch(_){ /* intenta el siguiente */ }
+    try {
+      if (typeof tryBridge === 'function' && tryBridge()) {
+        console.log("✅ Descargado exitosamente vía puente nativo");
+        return;
+      }
+    } catch(e) { /* Ignorar y probar el siguiente */ }
   }
 
-  // ---------- 2) Fallback: <a download> clásico ----------
+  // 2. Método Estándar Mejorado (File en lugar de Blob)
+  // El uso de 'File' es CRÍTICO. Blob pierde el nombre en Android; File intenta conservarlo.
+  const file = new File([content], safeName, { type: mime + ";charset=utf-8" });
+  const url = URL.createObjectURL(file);
+
   const a = document.createElement("a");
   a.href = url;
   a.download = safeName;
-  a.rel = "noopener";
   a.style.display = "none";
   document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  
+  // 3. HACK PARA ANDROID: Un retraso mínimo a veces permite que el WebView 
+  // registre correctamente el atributo 'download' antes de interceptar la navegación.
+  setTimeout(() => {
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    console.log("✅ Descarga disparada vía elemento <a> con objeto File");
+  }, 100);
 }
 
 /* ============ UTILIDADES ============ */
@@ -1443,11 +1443,20 @@ function updateFileNamePreview(){
   $("fileNamePreview").textContent = name ? "📄 " + name : "Completa todas las propiedades";
 }
 function buildFileName(){
+  // Sincronizar por si acaso
+  state.currentProps.jornada = $("propJornada").value;
+  state.currentProps.grado = $("propGrado").value;
+  state.currentProps.grupo = $("propGrupo").value;
+  state.currentProps.periodo = $("propPeriodo").value;
+  state.currentProps.asignatura = $("propAsignatura").value;
+
   const p = state.currentProps;
-  if(!p.asignatura || !p.grado || !p.grupo || !p.periodo || !p.jornada) return "";
+  if(!p.asignatura || !p.grado || !p.grupo || !p.periodo || !p.jornada) {
+    console.warn("⚠️ Faltan propiedades para generar el nombre del archivo");
+    return "";
+  }
   
-  // Se respeta el formato solicitado con espacios y tildes. 
-  // Los sistemas modernos los soportan y la sanitización agresiva anterior causaba rechazo en Android.
+  // Formato exacto solicitado: Matematicas_6-Sexto 1_P1_Mañana.csv
   const raw = `${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`;
   return sanitizeFileName(raw);
 }
