@@ -822,6 +822,30 @@ Pedro Martínez Rodríguez
   </div>
 </div>
 
+<!-- Modal Guardar Como (Nuevo flujo) -->
+<div class="modal-bg" id="modalSaveAs">
+  <div class="modal">
+    <h3>💾 Guardar Planilla</h3>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:12px">
+      El sistema ha generado el nombre ideal para tu archivo y <strong>ya lo ha copiado a tu portapapeles</strong>.
+    </p>
+    
+    <div style="background:var(--panel2); padding:12px; border-radius:6px; border:1px solid var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+      <span id="saveAsFileName" style="flex:1; font-family:monospace; font-size:14px; color:var(--text); word-break:break-all;"></span>
+      <button class="icon-btn" onclick="copyNameToClipboard()" title="Copiar de nuevo">📋</button>
+    </div>
+
+    <p style="color:var(--warn); font-size:12px; margin-bottom:16px;">
+      ⚠️ Si tu dispositivo abre una ventana para elegir carpeta, <strong>pega el nombre</strong>. Si lo descarga automáticamente con un nombre extraño, podrás renombrarlo fácilmente usando el nombre que ya tienes copiado.
+    </p>
+
+    <div class="modal-actions">
+      <button onclick="closeModal('modalSaveAs')">Cancelar</button>
+      <button class="primary" onclick="executeFinalDownload()">✅ Elegir carpeta y Guardar</button>
+    </div>
+  </div>
+</div>
+  
 <div id="evalContextMenu" class="eval-context-menu" style="display:none;"></div>
 
 <div id="inputContextMenu" class="input-context-menu" style="display:none;"></div>
@@ -1442,8 +1466,10 @@ function updateFileNamePreview(){
   const name = buildFileName();
   $("fileNamePreview").textContent = name ? "📄 " + name : "Completa todas las propiedades";
 }
-function buildFileName(){
-  // Sincronizar por si acaso
+function cleanFileName(name) {
+  return String(name).replace(/[\\/:*?"<>|]+/g, "_").substring(0, 150);
+}
+function buildFileName() {
   state.currentProps.jornada = $("propJornada").value;
   state.currentProps.grado = $("propGrado").value;
   state.currentProps.grupo = $("propGrupo").value;
@@ -1451,14 +1477,26 @@ function buildFileName(){
   state.currentProps.asignatura = $("propAsignatura").value;
 
   const p = state.currentProps;
-  if(!p.asignatura || !p.grado || !p.grupo || !p.periodo || !p.jornada) {
-    console.warn("⚠️ Faltan propiedades para generar el nombre del archivo");
-    return "";
-  }
+  if (!p.asignatura || !p.grado || !p.grupo || !p.periodo || !p.jornada) return "";
   
-  // Formato exacto solicitado: Matematicas_6-Sexto 1_P1_Mañana.csv
-  const raw = `${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`;
-  return sanitizeFileName(raw);
+  // Formato exacto: Matematicas_6-Sexto 1_P1_Mañana.csv
+  return cleanFileName(`${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`);
+}
+async function copyNameToClipboard() {
+  const name = $("saveAsFileName").textContent;
+  try {
+    await navigator.clipboard.writeText(name);
+    toast("✅ Nombre copiado al portapapeles");
+  } catch (err) {
+    // Fallback para navegadores muy antiguos
+    const textArea = document.createElement("textarea");
+    textArea.value = name;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textArea);
+    toast("✅ Nombre copiado al portapapeles");
+  }
 }
 
 /* ============ VALIDACIÓN DE NOTAS ============ */
@@ -1780,70 +1818,114 @@ function normalizeHeader(value){
 }
 
 /* GUARDAR CSV → DESCARGA */
-async function saveCSV(){
-  // Sincronizar estado con el DOM justo antes de guardar para evitar nombres vacíos o desactualizados
-  state.currentProps.jornada = $("propJornada").value;
-  state.currentProps.grado = $("propGrado").value;
-  state.currentProps.grupo = $("propGrupo").value;
-  state.currentProps.periodo = $("propPeriodo").value;
-  state.currentProps.asignatura = $("propAsignatura").value;
-
+async function saveCSV() {
   const fname = buildFileName();
-  if(!fname){ 
-    toast("⚠️ Completa todas las propiedades (Jornada, Grado, Grupo, Periodo, Asignatura) antes de guardar.", "err"); 
+  if (!fname) { 
+    toast("⚠️ Completa todas las propiedades (Jornada, Grado, Grupo, Periodo, Asignatura)", "err"); 
     return; 
   }
+
+  // Mostrar el modal con el nombre y copiarlo automáticamente
+  $("saveAsFileName").textContent = fname;
+  await copyNameToClipboard();
+  openModal("modalSaveAs");
+}
+
+/* CSV → DESCARGA */
+async function executeFinalDownload() {
+  const fname = $("saveAsFileName").textContent;
+  const { cog, soc, per } = state.slots;
   
-  const {cog, soc, per} = state.slots;
+  // --- Generar contenido CSV ---
   const header1 = ["APELLIDOS Y NOMBRES"];
   const header2 = [""];
-  const appendEvalHeaders = (type, count)=>{
-    for(let i=0;i<count;i++){
+  const appendEvalHeaders = (type, count) => {
+    for (let i = 0; i < count; i++) {
       const ev = state.evals[type][i];
-      header1.push(ev.name || `Evaluación ${i+1}`);
+      header1.push(ev.name || `Evaluación ${i + 1}`);
       header2.push(`${ev.criterion || ev.code}${ev.date ? "|" + ev.date : ""}`);
     }
   };
-  appendEvalHeaders("cog", cog); header1.push("DEF. COG","APORTE"); header2.push("","");
-  appendEvalHeaders("soc", soc); header1.push("DEF. SOC","APORTE"); header2.push("","");
-  appendEvalHeaders("per", per); header1.push("DEF. PER","APORTE","DEFINITIVA","ESTADO"); header2.push("","","","");
+  appendEvalHeaders("cog", cog); header1.push("DEF. COG", "APORTE"); header2.push("", "");
+  appendEvalHeaders("soc", soc); header1.push("DEF. SOC", "APORTE"); header2.push("", "");
+  appendEvalHeaders("per", per); header1.push("DEF. PER", "APORTE", "DEFINITIVA", "ESTADO"); header2.push("", "", "", "");
   
   const dataRows = [header1, header2];
-  state.rows.forEach(row=>{
+  state.rows.forEach(row => {
     const r = [row.name];
-    row.cog.forEach(c=>r.push(c.note));
-    const cogVals = row.cog.map(c=>{const n=parseNum(c.note); return n===null?1.0:n});
-    const defCog = cogVals.length ? cogVals.reduce((a,b)=>a+b,0)/cogVals.length : 0;
-    r.push(fmtNum(defCog), fmtNum(defCog*state.config.ponderacion.cognitivo/100));
+    row.cog.forEach(c => r.push(c.note));
+    const cogVals = row.cog.map(c => { const n = parseNum(c.note); return n === null ? 1.0 : n; });
+    const defCog = cogVals.length ? cogVals.reduce((a, b) => a + b, 0) / cogVals.length : 0;
+    r.push(fmtNum(defCog), fmtNum(defCog * state.config.ponderacion.cognitivo / 100));
     
-    row.soc.forEach(c=>r.push(c.note));
-    const socVals = row.soc.map(c=>parseNum(c.note)).filter(n=>n!==null);
-    const defSoc = socVals.length ? socVals.reduce((a,b)=>a+b,0)/socVals.length : 0;
-    r.push(fmtNum(defSoc), fmtNum(defSoc*state.config.ponderacion.social/100));
+    row.soc.forEach(c => r.push(c.note));
+    const socVals = row.soc.map(c => parseNum(c.note)).filter(n => n !== null);
+    const defSoc = socVals.length ? socVals.reduce((a, b) => a + b, 0) / socVals.length : 0;
+    r.push(fmtNum(defSoc), fmtNum(defSoc * state.config.ponderacion.social / 100));
     
-    row.per.forEach(c=>r.push(c.note));
-    const perVals = row.per.map(c=>parseNum(c.note)).filter(n=>n!==null);
-    const defPer = perVals.length ? perVals.reduce((a,b)=>a+b,0)/perVals.length : 0;
-    r.push(fmtNum(defPer), fmtNum(defPer*state.config.ponderacion.personal/100));
+    row.per.forEach(c => r.push(c.note));
+    const perVals = row.per.map(c => parseNum(c.note)).filter(n => n !== null);
+    const defPer = perVals.length ? perVals.reduce((a, b) => a + b, 0) / perVals.length : 0;
+    r.push(fmtNum(defPer), fmtNum(defPer * state.config.ponderacion.personal / 100));
     
-    const def = defCog*state.config.ponderacion.cognitivo/100 + defSoc*state.config.ponderacion.social/100 + defPer*state.config.ponderacion.personal/100;
-    r.push(fmtNum(def), def>=state.config.notaMinima?"Aprobado":"Reprobado");
+    const def = defCog * state.config.ponderacion.cognitivo / 100 + defSoc * state.config.ponderacion.social / 100 + defPer * state.config.ponderacion.personal / 100;
+    r.push(fmtNum(def), def >= state.config.notaMinima ? "Aprobado" : "Reprobado");
     dataRows.push(r);
   });
   
-  const csv = toCSV(dataRows);
+  const csvContent = dataRows.map(r => r.map(c => {
+    const s = String(c ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(",")).join("\n");
 
-  // DESCARGAR (PC y Android/WebToNative)
-  downloadTextFile(fname, csv, "text/csv");
+  // --- Intentar API moderna de "Guardar Como" (Escritorio/Android moderno) ---
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fname,
+        types: [{ description: 'Archivo CSV', accept: { 'text/csv': ['.csv'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(csvContent);
+      await writable.close();
+      closeModal("modalSaveAs");
+      toast("✅ Archivo guardado exitosamente en la carpeta elegida");
+      finalizeSaveLogic(fname);
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        closeModal("modalSaveAs");
+        return; // Usuario canceló
+      }
+      // Si falla, caemos al método tradicional
+    }
+  }
 
+  // --- Fallback tradicional (Android WebView / Navegadores antiguos) ---
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" }); // \uFEFF es BOM para Excel
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fname;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  closeModal("modalSaveAs");
+  toast("⚠️ Descarga iniciada. Si el nombre cambió, ¡renómbralo con el que copiaste!");
+  finalizeSaveLogic(fname);
+}
+
+function finalizeSaveLogic(fname) {
   state.currentFile = fname;
   updateStatusFile("📄 " + fname, "ok");
-  logAction("CSV descargado", `${fname} - ${state.rows.length} estudiantes`);
-  toast("Descargado: " + fname);
-
+  logAction("CSV guardado", `${fname} - ${state.rows.length} estudiantes`);
+  
+  // Guardar asignatura en config si es nueva
   const key = state.currentProps.grado + "-" + state.currentProps.grupo;
-  if(!state.config.asignaturas[key]) state.config.asignaturas[key]=[];
-  if(!state.config.asignaturas[key].includes(state.currentProps.asignatura)){
+  if (!state.config.asignaturas[key]) state.config.asignaturas[key] = [];
+  if (!state.config.asignaturas[key].includes(state.currentProps.asignatura)) {
     state.config.asignaturas[key].push(state.currentProps.asignatura);
     persistConfig();
   }
