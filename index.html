@@ -1096,18 +1096,50 @@ function saveBackupsList(list){
   catch(e){ toast("No se pudo guardar el backup","err"); }
 }
 
-/* ============ DESCARGA DE ARCHIVOS (PC + Android) ============ */
+/* ============ DESCARGA DE ARCHIVOS (PC + Android/WebToNative) ============ */
+function sanitizeFileName(name){
+  // Limpia caracteres que el DownloadManager de Android suele rechazar
+  return String(name)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"") // quita tildes/ñ → n
+    .replace(/[\\/:*?"<>|]+/g,"-")                   // caracteres prohibidos en FS
+    .replace(/\s+/g,"_")                              // espacios → _
+    .replace(/_+/g,"_")                               // colapsa __
+    .replace(/^_|_$/g,"");                            // quita _ sobrantes
+}
+
 function downloadTextFile(name, content, mime){
-  const blob = new Blob([content], {type:(mime||"text/plain") + ";charset=utf-8"});
+  const safeName = sanitizeFileName(name);
+  const type = (mime || "text/plain") + ";charset=utf-8";
+  const blob = new Blob([content], { type });
   const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
+
+  // ---------- 1) Intentar bridges nativos de WebToNative ----------
+  // Distintos proyectos exponen distintos nombres. Probamos los más comunes.
+  const bridges = [
+    () => window.Android?.downloadFile?.(url, safeName),
+    () => window.Android?.download?.(url, safeName),
+    () => window.Android?.saveFile?.(url, safeName, type),
+    () => window.WebToNative?.download?.(url, safeName),
+    () => window.WebToNative?.downloadFile?.(url, safeName),
+    () => window.WTN?.download?.(url, safeName),
+    () => window.App?.download?.(url, safeName),
+    () => window.Native?.download?.(url, safeName),
+  ];
+  for (const tryBridge of bridges){
+    try { if (tryBridge()) { setTimeout(()=>URL.revokeObjectURL(url), 2000); return; } }
+    catch(_){ /* intenta el siguiente */ }
+  }
+
+  // ---------- 2) Fallback: <a download> clásico ----------
+  const a = document.createElement("a");
   a.href = url;
-  a.download = name;
+  a.download = safeName;
   a.rel = "noopener";
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
 }
 
 /* ============ UTILIDADES ============ */
@@ -1407,7 +1439,8 @@ function updateFileNamePreview(){
 function buildFileName(){
   const p = state.currentProps;
   if(!p.asignatura||!p.grado||!p.grupo||!p.periodo||!p.jornada) return "";
-  return `${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`;
+  const raw = `${p.asignatura}_${p.grado}-${p.grupo}_P${p.periodo}_${p.jornada}.csv`;
+  return sanitizeFileName(raw);
 }
 
 /* ============ VALIDACIÓN DE NOTAS ============ */
@@ -1784,22 +1817,23 @@ async function saveCSV(){
 
 /* ============ BACKUPS (LOCALSTORAGE) ============ */
 function exportConfig(){
-  const timestamp = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
-  const fname = `backup_config_${timestamp}.json`;
+  const now = new Date();
+  const pad = n => String(n).padStart(2,"0");
+  const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const fname = `backup_config_${stamp}.json`;
   const content = JSON.stringify(state.config, null, 2);
 
-  // Guardar en backups locales
   const list = getBackupsList();
   list.unshift({ name:fname, date:Date.now(), config: JSON.parse(content) });
   while(list.length > MAX_BACKUPS) list.pop();
   saveBackupsList(list);
 
-  // Descargar
   downloadTextFile(fname, content, "application/json");
   logAction("Backup exportado", fname);
   toast("Backup descargado: " + fname);
   showBackups();
 }
+  
 function importConfig(){
   const input = document.createElement("input");
   input.type="file"; input.accept=".json";
