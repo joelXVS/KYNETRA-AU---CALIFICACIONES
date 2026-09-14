@@ -832,7 +832,7 @@ Pedro Martínez Rodríguez
     
     <div style="background:var(--panel2); padding:12px; border-radius:6px; border:1px solid var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
       <span id="saveAsFileName" style="flex:1; font-family:monospace; font-size:14px; color:var(--text); word-break:break-all;"></span>
-      <button class="icon-btn" onclick="copyNameToClipboard()" title="Copiar de nuevo">📋</button>
+      <button class="icon-btn" onclick="NameToClipboard()" title="Copiar de nuevo">📋</button>
     </div>
 
     <p style="color:var(--warn); font-size:12px; margin-bottom:16px;">
@@ -1012,7 +1012,7 @@ Pedro Martínez Rodríguez
     text-align:center;
   ">
     <p style="margin:0 0 8px; font-size:12px">
-      Kynetra AU - Calificaciones CSV &copy; 2026 · 
+      Kynetra AU - Calificaciones CSV &; 2026 · 
       <a href="https://kynetra-studios.github.io/main/terms.html" style="color:var(--accent); text-decoration:none">Términos de uso</a> · 
       <a href="https://kynetra-studios.github.io/main/privacy.html" style="color:var(--accent); text-decoration:none">Política de privacidad</a> · 
       <a href="https://kynetra-studios.github.io/main/cookies.html" style="color:var(--accent); text-decoration:none">Cookies</a>
@@ -1052,7 +1052,7 @@ Pedro Martínez Rodríguez
         <span style="color:var(--accent)">Build:</span> 2026.09.13 · 
       </p>
       <p style="margin:0 0 8px; font-size:12px">
-        Kynetra AU - Calificaciones CSV &copy; 2026 · 
+        Kynetra AU - Calificaciones CSV &; 2026 · 
         <a href="https://kynetra-studios.github.io/main/terms.html" style="color:var(--accent); text-decoration:none">Términos de uso</a> · 
         <a href="https://kynetra-studios.github.io/main/privacy.html" style="color:var(--accent); text-decoration:none">Política de privacidad</a> · 
         <a href="https://kynetra-studios.github.io/main/cookies.html" style="color:var(--accent); text-decoration:none">Cookies</a> · 
@@ -1833,109 +1833,136 @@ async function saveCSV() {
 
 /* CSV → DESCARGA */
 async function executeFinalDownload() {
-  const fname = $("saveAsFileName").textContent;
-  const { cog, soc, per } = state.slots;
-  
-  // --- Generar contenido CSV ---
-  const header1 = ["APELLIDOS Y NOMBRES"];
-  const header2 = [""];
-  const appendEvalHeaders = (type, count) => {
-    for (let i = 0; i < count; i++) {
-      const ev = state.evals[type][i];
-      header1.push(ev.name || `Evaluación ${i + 1}`);
-      header2.push(`${ev.criterion || ev.code}${ev.date ? "|" + ev.date : ""}`);
-    }
-  };
-  appendEvalHeaders("cog", cog); header1.push("DEF. COG", "APORTE"); header2.push("", "");
-  appendEvalHeaders("soc", soc); header1.push("DEF. SOC", "APORTE"); header2.push("", "");
-  appendEvalHeaders("per", per); header1.push("DEF. PER", "APORTE", "DEFINITIVA", "ESTADO"); header2.push("", "", "", "");
-  
-  const dataRows = [header1, header2];
-  state.rows.forEach(row => {
-    const r = [row.name];
-    row.cog.forEach(c => r.push(c.note));
-    const cogVals = row.cog.map(c => { const n = parseNum(c.note); return n === null ? 1.0 : n; });
-    const defCog = cogVals.length ? cogVals.reduce((a, b) => a + b, 0) / cogVals.length : 0;
-    r.push(fmtNum(defCog), fmtNum(defCog * state.config.ponderacion.cognitivo / 100));
-    
-    row.soc.forEach(c => r.push(c.note));
-    const socVals = row.soc.map(c => parseNum(c.note)).filter(n => n !== null);
-    const defSoc = socVals.length ? socVals.reduce((a, b) => a + b, 0) / socVals.length : 0;
-    r.push(fmtNum(defSoc), fmtNum(defSoc * state.config.ponderacion.social / 100));
-    
-    row.per.forEach(c => r.push(c.note));
-    const perVals = row.per.map(c => parseNum(c.note)).filter(n => n !== null);
-    const defPer = perVals.length ? perVals.reduce((a, b) => a + b, 0) / perVals.length : 0;
-    r.push(fmtNum(defPer), fmtNum(defPer * state.config.ponderacion.personal / 100));
-    
-    const def = defCog * state.config.ponderacion.cognitivo / 100 + defSoc * state.config.ponderacion.social / 100 + defPer * state.config.ponderacion.personal / 100;
-    r.push(fmtNum(def), def >= state.config.notaMinima ? "Aprobado" : "Reprobado");
-    dataRows.push(r);
-  });
-  
-  const csvContent = dataRows.map(r => r.map(c => {
-    const s = String(c ?? "");
-    return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(",")).join("\n");
+  try {
+    // 1. Cerrar modal INMEDIATAMENTE para dar feedback visual al usuario
+    closeModal("modalSaveAs");
+    toast("⏳ Preparando archivo...");
 
-  // Crear objeto File con el nombre correcto (CRÍTICO para Android)
-  const file = new File(["\uFEFF" + csvContent], fname, { type: "text/csv;charset=utf-8" });
-  closeModal("modalSaveAs");
+    const fname = $("saveAsFileName").textContent;
+    if (!fname) throw new Error("El nombre del archivo está vacío. Completa las propiedades.");
 
-  // 1. INTENTO 1: Web Share API (La MEJOR y única opción real para Android moderno)
-  // Abre el menú nativo de Android para elegir "Archivos", "Drive", etc. y respeta el nombre.
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({
-        files: [file],
-        title: 'Guardar Planilla',
-        text: `Archivo de calificaciones: ${fname}`
-      });
-      finalizeSaveLogic(fname);
-      toast("✅ Menú de guardado nativo abierto. Elige 'Archivos' o tu carpeta preferida.");
-      return;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        toast("Guardado cancelado por el usuario");
-        return;
+    const { cog, soc, per } = state.slots;
+    
+    // --- Generar contenido CSV ---
+    const header1 = ["APELLIDOS Y NOMBRES"];
+    const header2 = [""];
+    const appendEvalHeaders = (type, count) => {
+      for (let i = 0; i < count; i++) {
+        const ev = state.evals[type][i];
+        header1.push(ev.name || `Evaluación ${i + 1}`);
+        header2.push(`${ev.criterion || ev.code}${ev.date ? "|" + ev.date : ""}`);
       }
-      console.warn("Web Share falló, intentando otro método:", err);
-    }
-  }
+    };
+    appendEvalHeaders("cog", cog); header1.push("DEF. COG", "APORTE"); header2.push("", "");
+    appendEvalHeaders("soc", soc); header1.push("DEF. SOC", "APORTE"); header2.push("", "");
+    appendEvalHeaders("per", per); header1.push("DEF. PER", "APORTE", "DEFINITIVA", "ESTADO"); header2.push("", "", "", "");
+    
+    const dataRows = [header1, header2];
+    state.rows.forEach(row => {
+      const r = [row.name];
+      row.cog.forEach(c => r.push(c.note));
+      const cogVals = row.cog.map(c => { const n = parseNum(c.note); return n === null ? 1.0 : n; });
+      const defCog = cogVals.length ? cogVals.reduce((a, b) => a + b, 0) / cogVals.length : 0;
+      r.push(fmtNum(defCog), fmtNum(defCog * state.config.ponderacion.cognitivo / 100));
+      
+      row.soc.forEach(c => r.push(c.note));
+      const socVals = row.soc.map(c => parseNum(c.note)).filter(n => n !== null);
+      const defSoc = socVals.length ? socVals.reduce((a, b) => a + b, 0) / socVals.length : 0;
+      r.push(fmtNum(defSoc), fmtNum(defSoc * state.config.ponderacion.social / 100));
+      
+      row.per.forEach(c => r.push(c.note));
+      const perVals = row.per.map(c => parseNum(c.note)).filter(n => n !== null);
+      const defPer = perVals.length ? perVals.reduce((a, b) => a + b, 0) / perVals.length : 0;
+      r.push(fmtNum(defPer), fmtNum(defPer * state.config.ponderacion.personal / 100));
+      
+      const def = defCog * state.config.ponderacion.cognitivo / 100 + defSoc * state.config.ponderacion.social / 100 + defPer * state.config.ponderacion.personal / 100;
+      r.push(fmtNum(def), def >= state.config.notaMinima ? "Aprobado" : "Reprobado");
+      dataRows.push(r);
+    });
+    
+    const csvContent = dataRows.map(r => r.map(c => {
+      const s = String(c ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(",")).join("\n");
 
-  // 2. INTENTO 2: File System Access API (Funciona en PC, raramente en Android)
-  if (window.showSaveFilePicker) {
+    // 2. Crear objeto File (con fallback a Blob por si el WebView de Android es muy antiguo)
+    let file;
     try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fname,
-        types: [{ description: 'Archivo CSV', accept: { 'text/csv': ['.csv'] } }]
-      });
-      const writable = await handle.createWritable();
-      await writable.write(file);
-      await writable.close();
-      finalizeSaveLogic(fname);
-      toast("✅ Archivo guardado exitosamente en la carpeta elegida");
-      return;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        toast("Guardado cancelado");
-        return;
+      file = new File(["\uFEFF" + csvContent], fname, { type: "text/csv;charset=utf-8" });
+    } catch (e) {
+      console.warn("File API no soportada, usando Blob como fallback", e);
+      file = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8" });
+      file.name = fname; 
+    }
+
+    // 3. INTENTO 1: Web Share API (La mejor opción para Android)
+    let canShare = false;
+    try {
+      canShare = navigator.canShare && navigator.canShare({ files: [file] });
+    } catch (e) {
+      canShare = false; // Algunos navegadores lanzan error aquí en lugar de false
+    }
+
+    if (canShare) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Guardar Planilla',
+          text: `Archivo: ${fname}`
+        });
+        finalizeSaveLogic(fname);
+        toast("✅ Guardado exitosamente");
+        return; 
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          toast("Guardado cancelado por el usuario");
+          return;
+        }
+        console.warn("Web Share falló, intentando fallback:", err);
       }
     }
-  }
 
-  // 3. INTENTO 3: Fallback tradicional (Solo para navegadores de escritorio antiguos)
-  const url = URL.createObjectURL(file);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fname;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  
-  finalizeSaveLogic(fname);
-  toast("⚠️ Descarga automática iniciada. En Android, revisa 'Descargas' y renombra con el nombre copiado.");
+    // 4. INTENTO 2: File System Access API (Funciona en PC)
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fname,
+          types: [{ description: 'Archivo CSV', accept: { 'text/csv': ['.csv'] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(file);
+        await writable.close();
+        finalizeSaveLogic(fname);
+        toast("✅ Guardado exitosamente en la carpeta elegida");
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          toast("Guardado cancelado");
+          return;
+        }
+        console.warn("File System Access falló:", err);
+      }
+    }
+
+    // 5. INTENTO 3: Descarga tradicional (Fallback universal)
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    finalizeSaveLogic(fname);
+    toast("⚠️ Descarga iniciada. Revisa tu carpeta de Descargas.");
+
+  } catch (error) {
+    // Si algo falla catastróficamente, lo mostramos en pantalla en lugar de congelarnos
+    console.error("Error crítico en executeFinalDownload:", error);
+    closeModal("modalSaveAs");
+    showAlert("Error al guardar", "Ocurrió un error inesperado:\n\n" + error.message + "\n\n(Si estás en Android, intenta usar el navegador Chrome en lugar de la app empaquetada)");
+  }
 }
 
 function finalizeSaveLogic(fname) {
@@ -1954,48 +1981,61 @@ function finalizeSaveLogic(fname) {
 
 /* ============ BACKUPS (LOCALSTORAGE) ============ */
 function exportConfig(){
-  const now = new Date();
-  const pad = n => String(n).padStart(2,"0");
-  const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  const fname = `backup_config_${stamp}.json`;
-  const content = JSON.stringify(state.config, null, 2);
-  
-  // Usar File en lugar de Blob para preservar el nombre
-  const file = new File([content], fname, { type: "application/json" });
+  try {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,"0");
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const fname = `backup_config_${stamp}.json`;
+    const content = JSON.stringify(state.config, null, 2);
+    
+    let file;
+    try {
+      file = new File([content], fname, { type: "application/json" });
+    } catch (e) {
+      file = new Blob([content], { type: "application/json" });
+      file.name = fname;
+    }
 
-  const list = getBackupsList();
-  list.unshift({ name:fname, date:Date.now(), config: JSON.parse(content) });
-  while(list.length > MAX_BACKUPS) list.pop();
-  saveBackupsList(list);
+    const list = getBackupsList();
+    list.unshift({ name:fname, date:Date.now(), config: JSON.parse(content) });
+    while(list.length > MAX_BACKUPS) list.pop();
+    saveBackupsList(list);
 
-  // Intentar Web Share primero (menú nativo de Android)
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup Configuración' })
-      .then(() => {
-        logAction("Backup exportado (Share)", fname);
-        toast("✅ Backup listo. Elige 'Archivos' para guardarlo donde quieras.");
-      })
-      .catch(err => {
-        if (err.name !== 'AbortError') fallbackDownload(file, fname);
-      });
-  } else {
-    fallbackDownload(file, fname);
+    let canShare = false;
+    try { canShare = navigator.canShare && navigator.canShare({ files: [file] }); } catch(e){}
+
+    if (canShare) {
+      navigator.share({ files: [file], title: 'Backup Configuración' })
+        .then(() => {
+          logAction("Backup exportado (Share)", fname);
+          toast("✅ Backup listo. Elige 'Archivos' para guardarlo.");
+        })
+        .catch(err => {
+          if (err.name !== 'AbortError') fallbackDownload(file, fname);
+        });
+    } else {
+      fallbackDownload(file, fname);
+    }
+
+    function fallbackDownload(fileObj, fileName) {
+      const url = URL.createObjectURL(fileObj);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      logAction("Backup exportado", fileName);
+      toast("Backup descargado: " + fileName);
+    }
+    
+    showBackups();
+  } catch (error) {
+    console.error("Error en exportConfig:", error);
+    closeModal("modalBackups");
+    showAlert("Error", "No se pudo exportar: " + error.message);
   }
-
-  function fallbackDownload(fileObj, fileName) {
-    const url = URL.createObjectURL(fileObj);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    logAction("Backup exportado", fileName);
-    toast("Backup descargado: " + fileName);
-  }
-  
-  showBackups();
 }
   
 function importConfig(){
